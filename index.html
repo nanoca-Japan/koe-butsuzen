@@ -1,0 +1,2353 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>声仏前 KOE-BUTSUZEN ─ 大浦家の仏壇</title>
+<meta name="description" content="声仏前 ─ 手を合わせて「ただいま」。わたしたちの声から咲いた一輪が、大浦家の仏壇に供えられます。">
+<!--
+  ═══════════════════════════════════════════════════════════════
+  声仏前 KOE-BUTSUZEN ─ リモート仏壇（大浦家・家族用プロトタイプ）
+  声標本 KOE-HYOHON（nanoca）の科学と花のエンジンにもとづく。
+  ・声は端末の外に出ません（共有されるのは花の数値・名前・時刻のみ）
+  ・花は声から決定論で咲きます（乱数依存なし＝非再現的な再現性）
+  ・?quiet=1 で発光系をすべて消せます（静謐モード）
+
+  ▼ 詩帆さんが編集する設定はこのすぐ下の CONFIG だけです ▼
+
+  ═══ 後継AIへ ── 守りの約束（これを壊すと、家族が供えた花が消える・化ける）═══
+  このファイルにデータは入っていない。花・封筒・お酒の記録は、各端末の
+  localStorage（キー 'oura_butsudan_v1'）と、共有スペース（URLの ?s= が指す
+  jsonblob）に生きている。デザイン・演出・文言はいくらでも変えてよい。
+  ただし次の場所は【変更禁止】。変えると、既存の記録が読めなくなるか、
+  同じ数値から違う花が咲いて「兄弟が供えたあの花」が別物に化ける：
+   1. stateの形： {v, flowers:[{id,n,t,s,m,w,q}], envelopes, sake, removed}
+   2. localStorageのキー名（'oura_butsudan_v1'／'oura_butsudan_name'／'oura_visited'）
+   3. mulberry32・シード生成・rng()の呼び出し順（決定論の心臓）
+   4. analyzeVoice／spread の量子化／designFlower／buildSketch／petalPts の写像
+      （＝声の数値→花。変えたい時は声標本本体と同じく「バージョン分離」で：
+        既存レコードは旧写像、新レコードだけ新写像に）
+   5. 同期の作法（mergeStateの墓標方式・jsonblobのGET/PUT）
+  迷ったら nanoca_BIBLE.md 第1章（憲法）と第4章の「触ってはいけない場所」を読む。
+  ═══════════════════════════════════════════════════════════════
+-->
+<script>
+/* ═══════════ CONFIG（ここだけ編集すればOK） ═══════════ */
+const HOUSE = {
+  family:   '大浦家',
+  title:    '大浦家の仏壇',
+  honoree:  'じいちゃん',      // どなたの仏壇か（表示用）
+  ihai:     '大浦家先祖代々之霊位', // 位牌の文字
+  meinichi: '07-27',           // 祥月命日（月-日）。前後1週間、一言が添えられます
+};
+const PAYPAY = {
+  link: '',                    // お父さんの paypay.me リンクがあればここに（例 'https://paypay.me/xxxx'）
+  id:   '090-3070-9443',       // 父のPayPay検索用（電話番号）
+  name: 'お父さん',            // 受取人の呼び名（表示用）
+};
+const NOTIFY = {
+  /* 全自動LINE通知（任意）：LINE公式アカウント＋GAS中継を用意したら、
+     GASのWebアプリURLをここに貼るだけで、お参り・御仏前が自動で家族LINEに届きます。
+     （付属の「koe_butsuzen_notify.gs」とREADME参照。空なら手動の「知らせる」ボタンだけ動きます） */
+  url: '',
+  /* SMSで知らせる宛先（「SMSで知らせる」を押すと、この宛先＋文面入りでSMS作成画面が開く） */
+  sms: ['090-3070-9443','090-8551-6795'],
+  smsName: 'お父さん・お母さん',
+};
+/* ═══════════ CONFIG ここまで ═══════════ */
+</script>
+<style>
+/* ── nanoca の作法：静謐・生成り・彩度のある粒の群れを作らない ── */
+:root{
+  --sumi:#171210; --urushi:#221a14; --urushi2:#2b2119;
+  --kin:#c8a448; --kin2:#b08830; --kinawa:#8a6f3a;
+  --kinu:#efe6d0; --kinu2:#d8cdb4; --kasumi:#a89a80;
+  --shu:#7a3b2e;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  background:var(--sumi); color:var(--kinu);
+  font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
+  overflow-x:hidden; -webkit-font-smoothing:antialiased;
+  padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+}
+button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input,textarea{font-family:inherit}
+
+/* ── 全体 ── */
+#app{max-width:520px;margin:0 auto;padding:18px 14px 60px}
+header{text-align:center;padding:26px 0 6px}
+.hFam{font-size:11px;letter-spacing:.5em;color:var(--kasumi);margin-left:.5em}
+h1{font-size:24px;font-weight:500;letter-spacing:.32em;margin:8px 0 4px;margin-left:.32em;color:var(--kinu)}
+.hDay{font-size:11.5px;color:var(--kin);letter-spacing:.18em;margin-top:8px;opacity:.9}
+.hNote{font-size:11px;color:var(--kasumi);letter-spacing:.12em;margin-top:5px;line-height:1.9}
+
+/* ── 仏壇（扉つき・三段・奥行き）── 実家の、扉のある大きなお仏壇へ ── */
+#butsudanWrap{position:relative;margin:22px auto 0;max-width:480px;filter:drop-shadow(0 28px 42px rgba(0,0,0,.72))}
+.yane{ /* 屋根：胴より一回り張り出す */
+  height:18px;margin:0 -7px;border-radius:9px 9px 0 0;
+  background:linear-gradient(180deg,#2a2118,#15100a 78%,#0e0a06);
+  border:1px solid rgba(200,164,72,.55);border-bottom:none;
+  box-shadow:inset 0 2px 3px rgba(255,246,222,.08);
+  position:relative;z-index:45;
+}
+.yane::after{content:'';position:absolute;left:8px;right:8px;bottom:3px;height:1px;background:linear-gradient(90deg,transparent,rgba(226,195,122,.55),transparent)}
+.dai{ /* 台座：どっしり受ける */
+  height:20px;margin:0 -9px;border-radius:2px 2px 7px 7px;
+  background:linear-gradient(180deg,#251d13 0%,#120d07 70%,#0b0805);
+  border:1px solid rgba(200,164,72,.45);border-top:1px solid rgba(226,195,122,.6);
+  position:relative;z-index:45;
+}
+#butsudanPersp{position:relative;perspective:1300px}
+#butsudan{
+  position:relative;overflow:hidden;
+  background:linear-gradient(178deg,#1c1610 0%,#0f0b07 55%,#090603 100%);
+  border-left:7px solid #14100a;border-right:7px solid #14100a;
+  box-shadow:inset 2px 0 0 rgba(200,164,72,.22), inset -2px 0 0 rgba(200,164,72,.22), inset 0 0 70px rgba(0,0,0,.6);
+  padding:0 0 2px;
+}
+#butsudan::before{ /* 木目（ごく淡く） */
+  content:'';position:absolute;inset:0;pointer-events:none;opacity:.6;
+  background:repeating-linear-gradient(92deg,rgba(236,214,166,.018) 0 2px,transparent 2px 8px);
+}
+/* ══ 観音開きの扉：ゆっくりとひらく ══ */
+.tobira{
+  position:absolute;top:0;bottom:0;width:50.6%;z-index:40;
+  background:
+    linear-gradient(118deg,rgba(246,236,212,.06) 0%,transparent 26%,transparent 70%,rgba(246,236,212,.03) 100%),
+    linear-gradient(100deg,#1e1810 0%,#0d0906 55%,#070503 100%);
+  border:1px solid rgba(200,164,72,.5);
+  box-shadow:inset 0 0 34px rgba(0,0,0,.6);
+}
+.tobira::before{ /* 内枠と、上半分の障子格子 */
+  content:'';position:absolute;inset:6% 9%;
+  border:1px solid rgba(200,164,72,.4);
+  background:
+    linear-gradient(180deg,transparent calc(46% - 1px),rgba(200,164,72,.4) calc(46% - 1px) 46%,transparent 46%),
+    repeating-linear-gradient(90deg,transparent 0 12px,rgba(200,164,72,.11) 12px 13px),
+    repeating-linear-gradient(0deg,transparent 0 12px,rgba(200,164,72,.08) 12px 13px);
+  background-size:100% 100%,100% 46%,100% 46%;background-repeat:no-repeat;
+}
+.tobira::after{ /* 取っ手の金具 */
+  content:'';position:absolute;top:52%;width:9px;height:9px;border:1.5px solid #d9b866;border-radius:50%;
+  box-shadow:0 0 7px rgba(217,184,102,.35);
+}
+.tobira.tobL{left:0;transform-origin:left center;border-radius:2px;cursor:pointer}
+.tobira.tobL::after{right:5%}
+.tobira.tobR{right:0;transform-origin:right center;border-radius:2px;cursor:pointer}
+.tobira.tobR::after{left:5%}
+/* 扉は、ふれてからひらく（きしみの音とともに・ズームしながら） */
+body.doorsOpen .tobira.tobL{animation:doorL 3.2s .1s cubic-bezier(.6,.04,.22,1) forwards;pointer-events:none}
+body.doorsOpen .tobira.tobR{animation:doorR 3.2s .1s cubic-bezier(.6,.04,.22,1) forwards;pointer-events:none}
+@keyframes doorL{to{transform:rotateY(-77deg)}}
+@keyframes doorR{to{transform:rotateY(77deg)}}
+#butsudanWrap{transform:scale(.94) translateY(4px)}
+body.doorsOpen #butsudanWrap{animation:zoomIn 3.6s cubic-bezier(.45,.05,.18,1) forwards}
+@keyframes zoomIn{from{transform:scale(.94) translateY(4px)}to{transform:scale(1) translateY(0)}}
+#doorHint{
+  position:absolute;left:0;right:0;top:46%;z-index:44;text-align:center;pointer-events:none;
+  font-size:11px;letter-spacing:.42em;color:rgba(226,195,122,.85);text-indent:.42em;
+  animation:hintBreath 3.6s ease-in-out infinite;
+}
+@keyframes hintBreath{0%,100%{opacity:.4}50%{opacity:.95}}
+body.doorsOpen #doorHint{display:none}
+body.quiet .tobira.tobL{animation:none;transform:rotateY(-77deg);pointer-events:none}
+body.quiet .tobira.tobR{animation:none;transform:rotateY(77deg);pointer-events:none}
+body.quiet #butsudanWrap{transform:none;animation:none}
+body.quiet #doorHint{display:none}
+/* 彫刻の欄間（七宝繋ぎ＝互い違いの環の透かし彫り） */
+.ranmaChou{
+  height:22px;margin:8px 12px 0;position:relative;
+  border:1px solid rgba(200,164,72,.45);border-radius:3px;
+  background:
+    radial-gradient(circle 7px at 11px 11px, transparent 4.5px, rgba(200,164,72,.30) 5px, rgba(200,164,72,.30) 6px, transparent 6.5px),
+    radial-gradient(circle 7px at 0px 11px, transparent 4.5px, rgba(200,164,72,.20) 5px, rgba(200,164,72,.20) 6px, transparent 6.5px),
+    linear-gradient(180deg,#120d07,#090603);
+  background-size:22px 22px,22px 22px,100% 100%;
+}
+/* 打敷：段から垂れる金襴の三角の布 */
+.uchishiki{position:relative;height:0;z-index:6}
+.uchishikiTri{
+  position:absolute;left:50%;top:-2px;transform:translateX(-50%);
+  width:172px;height:52px;
+  clip-path:polygon(0 0,100% 0,50% 100%);
+  background:
+    repeating-linear-gradient(45deg, rgba(255,238,196,.15) 0 3px, transparent 3px 9px),
+    repeating-linear-gradient(-45deg, rgba(255,238,196,.11) 0 3px, transparent 3px 9px),
+    linear-gradient(180deg,#c9a44d 0%,#8a6a2e 68%,#6a5225 100%);
+  border-top:2px solid #e2c37a;
+  box-shadow:0 5px 12px rgba(0,0,0,.55);
+}
+/* ══ 内陣：描き込みの奥行き ══ */
+.oku{position:relative;height:368px;margin:10px 10px 0;overflow:hidden;border:1px solid rgba(200,164,72,.3);border-radius:3px;background:#080502;box-shadow:inset 0 16px 34px rgba(0,0,0,.6)}
+.okuBack{ /* 最奥の間 */
+  position:absolute;left:14%;right:14%;top:10%;bottom:9%;
+  background:radial-gradient(85% 62% at 50% 36%,#241a0f,#120c07 68%,#0c0804);
+  border:1px solid rgba(200,164,72,.2);
+}
+.wall{position:absolute;pointer-events:none}
+.wL{left:0;top:0;bottom:0;width:14%;background:linear-gradient(90deg,#070402,#1b120a 82%,#291d11);clip-path:polygon(0 0,100% 10%,100% 91%,0 100%)}
+.wR{right:0;top:0;bottom:0;width:14%;background:linear-gradient(270deg,#070402,#1b120a 82%,#291d11);clip-path:polygon(100% 0,0 10%,0 91%,100% 100%)}
+.wT{top:0;left:0;right:0;height:10%;background:linear-gradient(180deg,#060301,#150e08);clip-path:polygon(0 0,100% 0,86% 100%,14% 100%)}
+.wT::after{content:'';position:absolute;inset:0;clip-path:inherit;background:repeating-linear-gradient(90deg,transparent 0 28px,rgba(200,164,72,.16) 28px 29px)}
+.wB{bottom:0;left:0;right:0;height:9%;background:linear-gradient(180deg,#2c2012,#0e0904);clip-path:polygon(14% 0,86% 0,100% 100%,0 100%)}
+.wB::after{content:'';position:absolute;inset:0;clip-path:inherit;background:linear-gradient(180deg,rgba(240,220,170,.10),transparent 60%)}
+.hashira{ /* 金の柱 */
+  position:absolute;top:9%;bottom:8%;width:7px;border-radius:2px;z-index:2;
+  background:linear-gradient(90deg,#4a3818,#c9a44d 44%,#e2c37a 52%,#8a6a2e);
+  box-shadow:0 0 9px rgba(0,0,0,.65);
+}
+.hashira.hL{left:13%}.hashira.hR{right:13%}
+.kuden{position:absolute;top:9%;left:29%;right:29%;height:32px;pointer-events:none;z-index:2}
+.kudenYane{ /* 宮殿の屋根 */
+  position:absolute;left:-9%;right:-9%;top:0;height:15px;opacity:.92;
+  background:linear-gradient(180deg,#e2c37a,#8a6a2e);
+  clip-path:polygon(0 100%,7% 32%,50% 0,93% 32%,100% 100%,87% 76%,50% 52%,13% 76%);
+}
+.kudenBody{position:absolute;left:5%;right:5%;top:13px;bottom:0;background:linear-gradient(180deg,#231a0f,#140d07);border:1px solid rgba(200,164,72,.5);border-top:none}
+.touro{position:absolute;top:12.5%;width:12px;height:30px;pointer-events:none;opacity:.92;z-index:2}
+.touro.tL{left:23%}.touro.tR{right:23%}
+/* 瓔珞：宮殿の両脇に垂れる金の飾り（写真の金の連なりを写す） */
+.youraku{position:absolute;top:13%;width:8px;height:52px;z-index:2;opacity:.88;pointer-events:none}
+.youraku.yL{left:31.5%}.youraku.yR{right:31.5%}
+.youraku::before{content:'';position:absolute;top:0;left:50%;width:1px;height:13px;background:rgba(200,164,72,.55)}
+.youraku::after{
+  content:'';position:absolute;top:12px;left:0;width:8px;height:36px;
+  background:
+    radial-gradient(circle 3.5px at 4px 5px,#e2c37a 2.5px,transparent 3px),
+    radial-gradient(circle 3px at 4px 14px,#c9a44d 2px,transparent 2.6px),
+    radial-gradient(circle 3.5px at 4px 23px,#e2c37a 2.5px,transparent 3px),
+    radial-gradient(ellipse 3px 5px at 4px 32px,#d0a352 2.6px,transparent 3.4px);
+}
+.touro::before{content:'';position:absolute;top:0;left:50%;width:1px;height:10px;background:rgba(200,164,72,.6)}
+.touro::after{ /* 吊灯籠：あたたかい灯（写真の燈明の色に寄せる） */
+  content:'';position:absolute;top:10px;left:0;width:12px;height:14px;border-radius:50% 50% 42% 42%;
+  background:radial-gradient(60% 55% at 50% 42%,#f8e3b0,#d0a352 58%,#6a5225);
+  box-shadow:0 2px 6px rgba(0,0,0,.55), 0 0 11px rgba(240,190,120,.22);
+}
+.naijin{position:absolute;left:14%;right:14%;bottom:9%;display:flex;justify-content:center;align-items:flex-end;z-index:3}
+/* 位牌（須弥壇の上に） */
+.ihaiPos{position:relative;z-index:3;text-align:center}
+.ihai{position:relative;text-align:center;margin-bottom:0}
+.shumidan{width:104px;height:13px;margin:2px auto 0;background:linear-gradient(180deg,#1f1810,#0a0704);border:1px solid rgba(230,201,130,.6);border-top:1px solid rgba(246,230,180,.75);border-radius:2px;box-shadow:0 3px 10px rgba(0,0,0,.7)}
+.shumidan2{width:126px;height:10px;margin:0 auto;background:linear-gradient(180deg,#171209,#080502);border:1px solid rgba(230,201,130,.4);border-top:none;border-radius:0 0 3px 3px}
+.ihaiBody{ /* 黒漆の位牌：ほぼ黒、艶、丸い頭、金縁 */
+  position:relative;display:inline-block;
+  background:linear-gradient(103deg,#171512 0%,#020202 32%,#12100d 54%,#000 82%);
+  border:1px solid rgba(230,201,130,.8);border-radius:22px 22px 3px 3px;
+  padding:16px 12px 13px;
+  box-shadow:0 7px 20px rgba(0,0,0,.8), inset 0 1px 7px rgba(255,248,228,.12), inset 0 -8px 14px rgba(0,0,0,.7);
+}
+.ihaiBody::before{ /* 漆の艶：縦にひとすじの照り */
+  content:'';position:absolute;left:16%;top:5%;bottom:8%;width:13%;border-radius:8px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(255,250,236,.075),transparent);
+}
+.ihaiTxt{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12.5px;color:#f2e2ac;line-height:1;height:158px;text-shadow:0 0 7px rgba(242,226,172,.35),0 1px 0 rgba(0,0,0,.8)}
+.ihaiTxt span{display:block}
+.ihaiBase{ /* 位牌の台：黒漆に金の縁 */
+  width:76px;height:9px;margin:2px auto 0;
+  background:linear-gradient(180deg,#12100c,#000);
+  border:1px solid rgba(230,201,130,.55);border-top:1px solid rgba(246,230,180,.8);border-radius:2px;
+}
+/* 蝋燭（金の燭台に立て、段の面に据える） */
+.rosoku{position:relative;z-index:5;width:20px;margin:0 4px;flex:none}
+.roBody{width:9px;height:50px;margin:0 auto;background:linear-gradient(180deg,#efe8da,#cdc2ac);border-radius:3px 3px 1px 1px}
+.roDai{position:relative;width:12px;height:7px;margin:-1px auto 0;
+  background:linear-gradient(180deg,#e2c37a,#8a6a2e);border-radius:2px 2px 0 0}
+.roDai::before{content:'';position:absolute;left:50%;transform:translateX(-50%);top:7px;width:5px;height:9px;
+  background:linear-gradient(90deg,#6a5225,#c9a44d 50%,#6a5225)}
+.roDai::after{content:'';position:absolute;left:50%;transform:translateX(-50%);top:15px;width:20px;height:6px;
+  background:linear-gradient(180deg,#c9a44d,#6a5225);border-radius:50%/70%;box-shadow:0 2px 5px rgba(0,0,0,.6)}
+.honoo{ /* 炎：白芯のあたたかい灯 */
+  position:absolute;left:50%;top:-17px;width:9px;height:18px;transform:translateX(-50%);
+  background:radial-gradient(50% 62% at 50% 70%,#fff8e2 0%,rgba(255,226,160,.9) 42%,rgba(255,196,110,.4) 72%,rgba(255,190,100,0) 100%);
+  border-radius:50% 50% 46% 46%;
+  animation:honoo 3.4s ease-in-out infinite;
+  filter:blur(.3px);
+  box-shadow:0 0 10px rgba(255,214,150,.28);
+}
+@keyframes honoo{
+  0%,100%{transform:translateX(-50%) scaleY(1) rotate(0deg);opacity:.92}
+  32%{transform:translateX(-49%) scaleY(1.07) rotate(1.6deg);opacity:1}
+  61%{transform:translateX(-51%) scaleY(.95) rotate(-1.4deg);opacity:.85}
+}
+body.quiet .honoo{animation:none;opacity:.75}
+/* 花立（左右・内陣の前列）：真鍮に金帯の、堂々とした花瓶 */
+.hanatate{position:absolute;bottom:6%;width:152px;height:216px;z-index:4;pointer-events:none}
+.hanatate.left{left:-10px}
+.hanatate.right{right:-10px}
+.vasePot{
+  position:absolute;bottom:0;left:50%;transform:translateX(-50%);
+  z-index:30; /* 花瓶は花の手前＝茎は口の奥へ消える（挿さって見える） */
+  width:44px;height:56px;
+  background:
+    linear-gradient(90deg,rgba(255,240,200,.13) 6%,transparent 34%,transparent 66%,rgba(0,0,0,.42) 96%),
+    linear-gradient(180deg,#3c434b 0%,#242a30 46%,#14181c 100%);
+  border-radius:11px 11px 15px 15px;
+  border:1px solid rgba(200,164,72,.55);
+  border-bottom:3px solid rgba(200,164,72,.65); /* 高台の金 */
+  box-shadow:inset 0 3px 6px rgba(255,255,255,.09), 0 5px 14px rgba(0,0,0,.6);
+}
+.vasePot::before{ /* 口の金の縁 */
+  content:'';position:absolute;top:-6px;left:5px;right:5px;height:8px;
+  background:linear-gradient(180deg,#e2c37a,#8a6a2e);border-radius:5px;
+  box-shadow:0 1px 3px rgba(0,0,0,.5);
+}
+.vasePot::after{ /* 胴の金帯 */
+  content:'';position:absolute;left:3px;right:3px;top:54%;height:4px;border-radius:2px;
+  background:linear-gradient(90deg,#6a5225,#e2c37a 50%,#6a5225);opacity:.85;
+}
+.flowerCv{position:absolute;bottom:42px;left:50%;width:150px;height:196px;transform-origin:50% 96%;}
+.flowerCv canvas{width:100%;height:100%;display:block}
+.swayA{animation:sway 9s ease-in-out infinite}
+.swayB{animation:sway 11s ease-in-out infinite reverse}
+@keyframes sway{0%,100%{rotate:-0.8deg}50%{rotate:0.8deg}}
+body.quiet .flowerCv{animation:none}
+/* 段の縁と下段 */
+.dan{height:13px;margin:0 3px;background:linear-gradient(180deg,#2c2214,#150f08);border-top:1px solid rgba(240,214,142,.6);border-bottom:1px solid rgba(0,0,0,.7)}
+.gedan{position:relative;padding:6px 10px 14px}
+/* 香炉と線香 */
+.kouro{position:relative;z-index:3;text-align:center;margin-top:2px}
+.kouroBody{display:inline-block;width:56px;height:22px;background:linear-gradient(180deg,#3d464e,#22282d);border:1px solid rgba(200,164,72,.4);border-radius:8px 8px 14px 14px;box-shadow:0 3px 8px rgba(0,0,0,.5)}
+.kouroBody::before{content:'';display:block;width:40px;height:4px;margin:-3px auto 0;background:#171c20;border-radius:3px}
+#kemuri{position:absolute;left:50%;bottom:20px;width:40px;height:110px;transform:translateX(-50%);pointer-events:none;opacity:.5}
+/* お酒（徳利とお猪口）：お酒の好きなふたりに。タップで、ちょろちょろっと注ぐ */
+.osake{position:absolute;left:12px;top:-6px;z-index:5;width:52px;text-align:center;pointer-events:auto}
+.tokkuri{
+  position:absolute;left:2px;bottom:16px;width:17px;height:27px;
+  background:linear-gradient(105deg,#f0ebdf,#cfc7b4 70%,#b8b09c);
+  border-radius:8px 8px 7px 7px;
+  box-shadow:inset -2px 0 3px rgba(0,0,0,.15),0 3px 6px rgba(0,0,0,.5);
+  transform-origin:85% 92%;
+  transition:transform .5s cubic-bezier(.5,.05,.3,1);
+}
+.tokkuri::before{ /* 首と口 */
+  content:'';position:absolute;top:-7px;left:50%;transform:translateX(-50%);
+  width:8px;height:8px;background:linear-gradient(105deg,#f0ebdf,#c4bca8);
+  border-radius:3px 3px 1px 1px;
+}
+.tokkuri::after{ /* 藍のひとすじ */
+  content:'';position:absolute;left:2px;right:2px;top:9px;height:2px;border-radius:2px;
+  background:rgba(90,110,140,.45);
+}
+.osake.pour .tokkuri{transform:rotate(58deg) translate(1px,-5px)} /* お猪口のある右へかたむく */
+.ochoko{
+  position:absolute;right:5px;bottom:16px;width:13px;height:9px;overflow:hidden;
+  background:linear-gradient(180deg,#f0ebdf,#cfc7b4);
+  border-radius:2px 2px 5px 5px;
+  box-shadow:0 2px 5px rgba(0,0,0,.5);
+}
+.sakeFill{position:absolute;left:1px;right:1px;bottom:1px;height:0;background:linear-gradient(180deg,#f4eed6,#e6dcb4);transition:height 1.2s ease .3s;border-radius:1px}
+.osake.filled .sakeFill{height:5px}
+.sakeStream{
+  position:absolute;right:13px;bottom:23px;width:1.5px;height:14px;opacity:0;
+  background:linear-gradient(180deg,rgba(244,238,214,.2),rgba(244,238,214,.9));
+}
+.osake.pour .sakeStream{animation:sakeflow 1.7s ease .25s}
+@keyframes sakeflow{0%{opacity:0}16%{opacity:.9}75%{opacity:.9}100%{opacity:0}}
+.osakeLbl{position:absolute;left:0;right:0;bottom:0;font-size:9px;color:var(--kasumi);letter-spacing:.2em}
+.osake:active .tokkuri{filter:brightness(1.06)}
+/* おりん */
+.orin{position:absolute;right:16px;top:2px;z-index:5;text-align:center;pointer-events:auto}
+.orinBowl{width:34px;height:20px;margin:0 auto;background:linear-gradient(180deg,#d8bc74,#8a6f3a 80%);border-radius:4px 4px 17px 17px;box-shadow:inset 0 2px 3px rgba(255,255,255,.35),0 3px 8px rgba(0,0,0,.5)}
+.orinZabu{width:40px;height:8px;margin:-1px auto 0;background:#7a3b2e;border-radius:50%/60%}
+.orinLbl{font-size:9px;color:var(--kasumi);letter-spacing:.2em;margin-top:3px}
+.orin:active .orinBowl{transform:translateY(1px)}
+/* 供物台（御仏前） */
+.kumotsuDai{
+  position:relative;margin:24px 6px 0;padding:10px 8px 8px;min-height:62px;
+  background:linear-gradient(180deg,#2a2118,#20180f);
+  border:1px solid rgba(200,164,72,.3);border-radius:4px;
+  box-shadow:inset 0 2px 8px rgba(0,0,0,.45);
+}
+.kumotsuLbl{position:absolute;top:-8px;left:12px;font-size:9.5px;letter-spacing:.3em;color:var(--kasumi);background:var(--urushi);padding:0 8px}
+#envRow{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:flex-end;min-height:44px}
+.fuutou{ /* 御仏前の封筒（不祝儀袋・双銀） */
+  position:relative;width:34px;height:50px;background:linear-gradient(178deg,#f3efe6,#ddd6c6);
+  border:1px solid #b9b09c;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,.45);
+  animation:fuIn .9s cubic-bezier(.2,.8,.3,1);
+}
+@keyframes fuIn{0%{transform:translateY(-26px);opacity:0}100%{transform:none;opacity:1}}
+.fuutou::before{ /* 水引（双銀） */
+  content:'';position:absolute;left:0;right:0;top:26px;height:5px;
+  background:repeating-linear-gradient(90deg,#9aa0a6 0 3px,#e8eaec 3px 6px);
+  box-shadow:0 1px 0 rgba(0,0,0,.15);
+}
+.fuutou::after{content:'';position:absolute;left:50%;top:23px;width:9px;height:11px;transform:translateX(-50%);border:1.5px solid #9aa0a6;border-radius:50%;background:#f3efe6}
+.fuTxt{position:absolute;top:2px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;font-size:6.5px;line-height:1.05;color:#4a4438}
+.fuName{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:6px;line-height:1;color:#6b5f4e;white-space:nowrap;overflow:hidden}
+.envEmpty{font-size:10.5px;color:#6a5f4c;letter-spacing:.15em;padding:12px 0}
+
+/* ── 操作（扉がひらくまでは、現れない。主はお参り＝祈り） ── */
+#actions{display:flex;gap:10px;margin:20px 2px 0}
+.btnMain{padding:18px 6px;font-size:15px}
+#subActions{display:flex;justify-content:center;align-items:center;gap:14px;margin-top:14px}
+#subActions button{font-size:11px;color:var(--kasumi);letter-spacing:.2em;border-bottom:1px solid rgba(168,154,128,.4);padding:4px 2px}
+.subSep{color:#584f40;font-size:10px}
+#envGateMsg{text-align:center;font-size:10.5px;color:var(--kin);letter-spacing:.1em;line-height:1.9;margin-top:10px;min-height:16px;opacity:.9}
+#actions,#subActions,#syncState{opacity:0;pointer-events:none;transition:opacity 1.4s ease}
+body.doorsOpen #actions,body.doorsOpen #subActions,body.doorsOpen #syncState{opacity:1;pointer-events:auto;transition-delay:2.4s}
+body.quiet #actions,body.quiet #subActions,body.quiet #syncState{opacity:1;pointer-events:auto;transition:none}
+.btn{
+  flex:1;padding:15px 6px;border:1px solid rgba(200,164,72,.5);border-radius:3px;
+  color:var(--kinu);font-size:13.5px;letter-spacing:.2em;text-align:center;line-height:1.7;
+  background:linear-gradient(180deg,rgba(200,164,72,.10),rgba(200,164,72,.03));
+  transition:background .3s;
+}
+.btn:active{background:rgba(200,164,72,.2)}
+.btn small{display:block;font-size:9.5px;color:var(--kasumi);letter-spacing:.1em}
+.btnGhost{border-color:rgba(168,154,128,.35);color:var(--kasumi)}
+#syncState{font-size:10px;color:#6a5f4c;letter-spacing:.12em;text-align:center;margin-top:8px;min-height:14px}
+
+/* ── 帳 ── */
+.cho{margin:30px 2px 0}
+.choTtl{font-size:12px;letter-spacing:.4em;color:var(--kasumi);border-bottom:1px solid rgba(168,154,128,.3);padding-bottom:7px;margin-bottom:4px}
+.choRow{display:flex;align-items:baseline;gap:10px;padding:9px 2px;border-bottom:1px dashed rgba(168,154,128,.16);font-size:12.5px}
+.choName{color:var(--kinu);letter-spacing:.1em;flex:none}
+.choWhat{color:var(--kasumi);font-size:11px;letter-spacing:.06em;flex:1;line-height:1.7}
+.choWhen{color:#6a5f4c;font-size:10px;flex:none}
+.choEmpty{font-size:11px;color:#6a5f4c;padding:12px 2px;letter-spacing:.12em}
+.choDel{flex:none;font-size:11px;color:#5a5142;padding:3px 9px;border:1px solid rgba(168,154,128,.25);border-radius:3px;letter-spacing:.04em}
+.choDel.arm{color:#c98f7a;border-color:rgba(201,143,122,.55)}
+
+footer{margin:44px 0 10px;text-align:center;font-size:9.5px;color:#584f40;letter-spacing:.14em;line-height:2.1}
+footer button{color:#6a5f4c;border-bottom:1px solid rgba(168,154,128,.3);font-size:9.5px;letter-spacing:.14em}
+
+/* ── モーダル共通 ── */
+.modal{position:fixed;inset:0;z-index:50;display:none;background:rgba(13,10,8,.94);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.modal.on{display:block}
+.mInner{max-width:480px;margin:0 auto;padding:30px 18px 50px;min-height:100%;display:flex;flex-direction:column}
+.mTtl{text-align:center;font-size:15px;letter-spacing:.4em;margin:8px 0 4px;color:var(--kinu)}
+.mSub{text-align:center;font-size:11px;color:var(--kasumi);letter-spacing:.12em;line-height:2;margin-bottom:14px}
+.mClose{position:absolute;top:14px;right:16px;font-size:20px;color:var(--kasumi);padding:8px}
+.field{margin:12px 0}
+.field label{display:block;font-size:11px;color:var(--kasumi);letter-spacing:.24em;margin-bottom:7px}
+.field input,.field textarea{
+  width:100%;padding:12px;background:rgba(239,230,208,.05);border:1px solid rgba(168,154,128,.35);
+  border-radius:3px;color:var(--kinu);font-size:15px;letter-spacing:.06em;outline:none;
+}
+.field input:focus{border-color:rgba(200,164,72,.6)}
+.mBtn{
+  display:block;width:100%;margin:14px 0 0;padding:15px;border:1px solid rgba(200,164,72,.55);border-radius:3px;
+  font-size:14px;letter-spacing:.3em;color:var(--kinu);text-align:center;
+  background:linear-gradient(180deg,rgba(200,164,72,.14),rgba(200,164,72,.04));
+}
+.mBtn:disabled{opacity:.35}
+.mBtnSub{display:block;width:100%;margin:10px 0 0;padding:12px;font-size:11.5px;letter-spacing:.2em;color:var(--kasumi);border:1px solid rgba(168,154,128,.3);border-radius:3px;text-align:center}
+.mNote{font-size:10.5px;color:#7a6f5c;letter-spacing:.08em;line-height:2;margin-top:12px}
+
+/* ── お参り（カメラ） ── */
+.visitSteps{margin:6px 0 16px;border:1px solid rgba(168,154,128,.25);border-radius:4px;padding:14px 14px 6px;background:rgba(239,230,208,.03)}
+.vStep{display:flex;gap:12px;align-items:flex-start;margin-bottom:12px}
+.vNo{flex:none;width:22px;height:22px;border:1px solid rgba(200,164,72,.6);border-radius:50%;color:var(--kin);font-size:11px;display:flex;align-items:center;justify-content:center}
+.vTx{font-size:12.5px;letter-spacing:.08em;line-height:1.9;color:var(--kinu2)}
+.vTx b{color:var(--kinu)}
+.vTx small{display:block;font-size:10px;color:var(--kasumi);letter-spacing:.06em}
+#camStep{
+  position:absolute;top:0;left:0;right:0;z-index:3;padding:12px 10px 22px;text-align:center;
+  background:linear-gradient(180deg,rgba(13,10,8,.86),rgba(13,10,8,0));
+  font-size:14.5px;letter-spacing:.2em;color:var(--kinu);line-height:1.8;
+}
+#camStep .cNo{display:inline-flex;width:20px;height:20px;margin-right:8px;border:1px solid rgba(200,164,72,.7);border-radius:50%;color:var(--kin);font-size:10.5px;align-items:center;justify-content:center;vertical-align:1px}
+#camStep small{display:block;font-size:10px;color:var(--kasumi);letter-spacing:.1em}
+#camWrap{position:relative;margin:6px auto 0;width:100%;max-width:340px;aspect-ratio:3/4;border-radius:6px;overflow:hidden;background:#0d0b09;border:1px solid rgba(168,154,128,.3)}
+#permPane{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;justify-content:center;padding:18px;background:rgba(13,10,8,.9)}
+#camVideo{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);filter:saturate(.75) brightness(.92)}
+#camGuide{position:absolute;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center}
+#camGuide svg{width:64%;opacity:.55}
+#camStatus{
+  position:absolute;left:0;right:0;bottom:0;padding:14px 10px 12px;text-align:center;
+  font-size:13px;letter-spacing:.22em;color:var(--kinu);line-height:1.9;
+  background:linear-gradient(0deg,rgba(13,10,8,.85),rgba(13,10,8,0));
+}
+#camStatus small{display:block;font-size:10px;color:var(--kasumi);letter-spacing:.12em}
+#micMeter{position:absolute;top:68px;left:50%;transform:translateX(-50%);width:120px;height:2px;background:rgba(239,230,208,.12);border-radius:2px;overflow:hidden}
+#micMeterBar{height:100%;width:0%;background:rgba(239,230,208,.75);transition:width .1s linear}
+
+/* ── 誕生（reveal） ── */
+#mReveal{background:#0d0a08}
+#revealCv{display:block;margin:0 auto;width:min(78vw,320px);height:auto;touch-action:none}
+#revealName{text-align:center;font-size:13px;letter-spacing:.3em;color:var(--kasumi);margin-top:6px;min-height:20px}
+#revealFlower{text-align:center;margin-top:12px;min-height:52px}
+#revealFlower .fn{font-size:19px;letter-spacing:.4em;color:var(--kinu)}
+#revealFlower .fr{font-size:9.5px;letter-spacing:.3em;color:#7a6f5c;margin-top:4px;text-transform:lowercase}
+#revealFlower .fd{font-size:11px;letter-spacing:.18em;color:var(--kasumi);margin-top:7px}
+#vpRows{max-width:280px;margin:16px auto 0}
+.vpRow{display:flex;align-items:center;gap:10px;margin:7px 0;opacity:0;transition:opacity .8s}
+.vpRow.on{opacity:1}
+.vpK{font-size:11px;letter-spacing:.3em;color:var(--kasumi);width:44px;flex:none}
+.vpBarW{flex:1;height:1px;background:rgba(168,154,128,.25);position:relative}
+.vpBar{position:absolute;left:0;top:-0.5px;height:2px;background:rgba(239,230,208,.8);width:0;transition:width 1.2s cubic-bezier(.2,.7,.3,1)}
+.vpV{font-size:9.5px;color:#7a6f5c;width:30px;text-align:right;flex:none;font-family:ui-monospace,monospace}
+#revealWord{text-align:center;font-size:11px;color:var(--kin);letter-spacing:.2em;margin-top:14px;min-height:18px;opacity:.9}
+
+/* ── 招待 ── */
+.linkBox{display:flex;gap:8px;margin-top:10px}
+.linkBox input{flex:1;padding:11px;background:rgba(239,230,208,.05);border:1px solid rgba(168,154,128,.35);border-radius:3px;color:var(--kinu);font-size:11px}
+.linkBox button{flex:none;padding:11px 14px;border:1px solid rgba(200,164,72,.5);border-radius:3px;font-size:11px;letter-spacing:.15em;color:var(--kinu)}
+
+/* PayPay封筒演出 */
+#envStage{position:relative;height:150px;margin:8px 0 4px;display:flex;align-items:center;justify-content:center}
+#envBig{
+  position:relative;width:92px;height:132px;background:linear-gradient(178deg,#f6f2ea,#e3dccd);
+  border:1px solid #b9b09c;border-radius:3px;box-shadow:0 6px 20px rgba(0,0,0,.5);
+  transition:transform 1.1s cubic-bezier(.4,0,.2,1),opacity 1.1s;
+}
+#envBig::before{content:'';position:absolute;left:0;right:0;top:68px;height:12px;background:repeating-linear-gradient(90deg,#9aa0a6 0 6px,#e8eaec 6px 12px)}
+#envBig::after{content:'';position:absolute;left:50%;top:61px;width:22px;height:26px;transform:translateX(-50%);border:3px solid #9aa0a6;border-radius:50%;background:#f6f2ea}
+#envBigTxt{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:1px;font-size:14px;line-height:1.1;color:#3c362c}
+#envBigName{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;font-size:9px;line-height:1.15;color:#6b5f4e;max-height:44px;overflow:hidden}
+#envBigTxt span,#envBigName span{display:block}
+#envBig.fly{transform:translateY(46vh) scale(.36);opacity:0}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="hFam">声仏前 ─ KOE-BUTSUZEN</div>
+    <h1 id="hTitle">大浦家の仏壇</h1>
+    <div class="hDay" id="hDay"></div>
+    <div class="hNote">手を合わせて「ただいま」——<br>わたしたちの声から咲いた一輪が、供えられます。</div>
+  </header>
+
+  <div id="butsudanWrap">
+    <div class="yane"></div>
+    <div id="butsudanPersp">
+      <div id="butsudan">
+        <div class="ranmaChou"></div>
+        <div class="oku">
+          <div class="okuBack"></div>
+          <div class="wall wT"></div><div class="wall wB"></div>
+          <div class="wall wL"></div><div class="wall wR"></div>
+          <div class="hashira hL"></div><div class="hashira hR"></div>
+          <div class="kuden"><div class="kudenYane"></div><div class="kudenBody"></div></div>
+          <div class="touro tL"></div><div class="touro tR"></div>
+          <div class="youraku yL"></div><div class="youraku yR"></div>
+          <div class="naijin">
+            <div class="rosoku"><div class="honoo"></div><div class="roBody"></div><div class="roDai"></div></div>
+            <div class="ihaiPos">
+              <div class="ihai"><div class="ihaiBody"><div class="ihaiTxt" id="ihaiTxt"></div></div><div class="ihaiBase"></div></div>
+              <div class="shumidan"></div><div class="shumidan2"></div>
+            </div>
+            <div class="rosoku"><div class="honoo"></div><div class="roBody"></div><div class="roDai"></div></div>
+          </div>
+          <div class="hanatate left" id="vaseL"><div class="vasePot"></div></div>
+          <div class="hanatate right" id="vaseR"><div class="vasePot"></div></div>
+        </div>
+        <div class="dan"></div>
+        <div class="uchishiki"><div class="uchishikiTri"></div></div>
+        <div class="gedan">
+          <button class="osake" id="osakeBtn" aria-label="お酒を注ぐ" style="height:50px">
+            <span class="tokkuri"></span><span class="sakeStream"></span>
+            <span class="ochoko"><span class="sakeFill"></span></span>
+            <span class="osakeLbl">お酒</span>
+          </button>
+          <div class="kouro">
+            <canvas id="kemuri" width="80" height="220"></canvas>
+            <div class="kouroBody"></div>
+          </div>
+          <button class="orin" id="orinBtn" aria-label="おりんを鳴らす">
+            <div class="orinBowl"></div><div class="orinZabu"></div><div class="orinLbl">りん</div>
+          </button>
+          <div class="kumotsuDai">
+            <span class="kumotsuLbl">御仏前</span>
+            <div id="envRow"><div class="envEmpty">まだ供えられていません</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="tobira tobL"></div>
+      <div class="tobira tobR"></div>
+      <div id="doorHint">扉にふれて、ひらく</div>
+    </div>
+    <div class="dai"></div>
+  </div>
+
+  <div id="actions">
+    <button class="btn btnMain" id="btnVisit">お参りする<small>合掌して「ただいま」</small></button>
+  </div>
+  <div id="subActions">
+    <button id="btnEnv">御仏前を供える</button>
+    <span class="subSep">・</span>
+    <button id="btnInvite">家族を招く</button>
+  </div>
+  <div id="envGateMsg"></div>
+  <div id="syncState"></div>
+
+  <div class="cho">
+    <div class="choTtl">お参りの帳</div>
+    <div id="choFlowers"><div class="choEmpty">まだお参りはありません</div></div>
+  </div>
+  <div class="cho">
+    <div class="choTtl">御仏前の帳</div>
+    <div id="choEnv"><div class="choEmpty">まだ御仏前はありません</div></div>
+  </div>
+  <div class="cho">
+    <div class="choTtl">お酒の帳</div>
+    <div id="choSake"><div class="choEmpty">まだ注がれていません</div></div>
+  </div>
+
+  <footer>
+    <button id="btnHayashi" style="color:#a08b5f;font-size:10.5px;letter-spacing:.14em;border-bottom:1px solid rgba(160,139,95,.4);line-height:2">科学監修：林 大輔 博士（心理学）── 声標本 KOE-HYOHON</button><br>
+    <span style="color:#8a7a5c">声仏前 KOE-BUTSUZEN ── 企画・開発：株式会社ナノカ 大浦詩帆</span><br>
+    決定論・乱数不使用 ／ 声そのものは端末の外に出ません
+    <div style="margin-top:8px"><button id="btnAbout">この仏壇と、データの扱いについて</button></div>
+  </footer>
+</div>
+
+<!-- ══ お参りモーダル ══ -->
+<div class="modal" id="mVisit">
+  <div class="mInner">
+    <button class="mClose" data-close="mVisit">×</button>
+    <div class="mTtl">お参り</div>
+    <div class="mSub">お参りは、手を合わせることから。</div>
+    <div class="visitSteps">
+      <div class="vStep"><span class="vNo">一</span><div class="vTx">カメラの前で、<b>手を合わせます</b><small>お顔は映さなくて大丈夫。手元だけで十分です</small></div></div>
+      <div class="vStep"><span class="vNo">二</span><div class="vTx">静かになったら、<b>「ただいま」</b>と声をかけます</div></div>
+      <div class="vStep"><span class="vNo">三</span><div class="vTx">あなたの声から、一輪の花が咲きます</div></div>
+    </div>
+    <div class="field" id="visitNameField">
+      <label>お名前（花に添えられます）</label>
+      <input id="visitName" maxlength="10" placeholder="例：詩帆">
+    </div>
+    <button class="mBtn" id="btnCamStart">手をあわせる</button>
+    <div id="camWrap" style="display:none">
+      <video id="camVideo" autoplay playsinline muted></video>
+      <div id="camGuide">
+        <!-- 合掌の線画：口元から下。両手を合わせ、指先は上、親指がそっと並び、手首から袖へ -->
+        <svg viewBox="0 0 120 150" fill="none" stroke="#efe6d0" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M53 8 Q60 11.5 67 8" opacity=".55"/>
+          <path d="M46 15 Q60 24 74 15" opacity=".3"/>
+          <path d="M60 36 C52 41 46.5 51 45 63 C43.5 75 44.5 87 48.5 97 C50 101 51.5 104 53 106.5"/>
+          <path d="M60 36 C68 41 73.5 51 75 63 C76.5 75 75.5 87 71.5 97 C70 101 68.5 104 67 106.5"/>
+          <path d="M60 36.5 C59.2 58 59.2 80 60 100" opacity=".8"/>
+          <path d="M54.5 44 C53.6 54 53.6 62 54.5 70" opacity=".6"/>
+          <path d="M50 49 C49.2 58 49.2 65 50 72" opacity=".42"/>
+          <path d="M65.5 44 C66.4 54 66.4 62 65.5 70" opacity=".6"/>
+          <path d="M70 49 C70.8 58 70.8 65 70 72" opacity=".42"/>
+          <path d="M56.5 62 Q60 57.5 63.5 62" opacity=".85"/>
+          <path d="M56.5 62 C55 68 55 76 57.2 82" opacity=".85"/>
+          <path d="M63.5 62 C65 68 65 76 62.8 82" opacity=".85"/>
+          <path d="M52.5 106 C46 115 38 124 29 133"/>
+          <path d="M67.5 106 C74 115 82 124 91 133"/>
+          <path d="M58.5 109 C54 118 48 127 42 135" opacity=".5"/>
+          <path d="M61.5 109 C66 118 72 127 78 135" opacity=".5"/>
+        </svg>
+      </div>
+      <div id="camStep"></div>
+      <div id="micMeter"><div id="micMeterBar"></div></div>
+      <div id="camStatus">準備しています…<small></small></div>
+      <div id="permPane">
+        <button class="mBtn" id="btnPerm">カメラとマイクを許可する</button>
+        <button class="mBtnSub" id="btnVoiceOnly" style="margin-top:12px">カメラなしで、声だけでお参りする</button>
+        <div class="mNote" id="permMsg" style="text-align:center;margin-top:14px">押すと、許可の確認が出ます。<br>「許可」を選んでください。</div>
+      </div>
+    </div>
+    <div class="mNote">声は花の数値になった瞬間に破棄され、録音は保存されません。カメラの映像はどこにも送られません。カメラを許可しない場合も、声だけでお参りできます。<br>※ LINEの中で開いてカメラが動かないときは、リンク先を Safari / Chrome で開いてください。</div>
+  </div>
+</div>
+
+<!-- ══ 誕生モーダル ══ -->
+<div class="modal" id="mReveal">
+  <div class="mInner" style="justify-content:center">
+    <canvas id="revealCv"></canvas>
+    <div id="revealWord"></div>
+    <div id="revealName"></div>
+    <div id="revealFlower"></div>
+    <div id="vpRows"></div>
+    <div id="revealMusic" style="text-align:center;font-size:10.5px;letter-spacing:.14em;line-height:2;color:var(--kasumi);margin-top:14px;min-height:20px"></div>
+    <div style="text-align:center;margin-top:10px"><button id="revealCredit" style="color:#7a6f5c;font-size:9.5px;letter-spacing:.14em;border-bottom:1px solid rgba(122,111,92,.35)">科学監修：林大輔 博士（声標本 KOE-HYOHON）</button></div>
+    <button class="mBtn" id="btnOffer" style="max-width:280px;margin:18px auto 0" disabled>仏壇に供える</button>
+    <button class="mBtnSub" id="btnRedo" style="max-width:280px;margin:10px auto 0">もういちど、お参りしなおす</button>
+  </div>
+</div>
+
+<!-- ══ 御仏前モーダル ══ -->
+<div class="modal" id="mEnv">
+  <div class="mInner">
+    <button class="mClose" data-close="mEnv">×</button>
+    <div class="mTtl">御仏前</div>
+    <div class="mSub" id="envLead">封筒に名前をしるし、仏壇に供えます。<br>お金は PayPay で直接届きます。</div>
+    <div id="envStep0" style="display:none">
+      <button class="mBtn" id="btnEnvGo" style="margin-top:22px">御仏前を供える（任意）</button>
+      <div class="mNote" id="envDest0" style="text-align:center;letter-spacing:.06em"></div>
+      <button class="mBtnSub" id="btnEnd0" style="margin-top:22px">お参りをLINEで知らせて、おわる</button>
+      <div class="mNote endNote" style="text-align:center">LINEが開きます。家族のトークを選んで送るだけ（お参りの内容と仏壇のリンク入り）</div>
+    </div>
+    <div id="envStep1">
+      <div class="field"><label>お名前</label><input id="envName" maxlength="10" placeholder="例：詩帆"></div>
+      <div class="field"><label>ひとこと（任意・帳に残ります）</label><input id="envMsg" maxlength="40" placeholder="例：熱中症など気をつけてね、今度〇〇ごろ帰る予定です。"></div>
+      <button class="mBtn" id="btnEnvOffer">封筒を供えて、PayPayで送る</button>
+      <div class="mNote" id="envDest" style="text-align:center;letter-spacing:.06em"></div>
+    </div>
+    <div id="envStep2" style="display:none">
+      <div id="envStage">
+        <div id="envBig"><span id="envBigTxt"></span><span id="envBigName"></span></div>
+      </div>
+      <div class="mSub" id="envDone" style="display:none">供えられました。<br>つづけて、PayPayでお気持ちを送れます。</div>
+      <button class="mBtn" id="btnPaypay" style="display:none">PayPayで送る</button>
+      <div class="mNote" id="paypayNote" style="display:none"></div>
+      <div class="mNote" id="ppFallback" style="display:none;text-align:center">アプリが開かないときは、ホーム画面から PayPay を開いて、<br>コピーした番号で「送る」→ 相手検索してください。</div>
+      <button class="mBtnSub" id="btnEnd2" style="display:none">お参りをLINEで知らせて、おわる</button>
+      <div class="mNote endNote" id="endNote2" style="display:none;text-align:center">LINEが開きます。家族のトークを選んで送るだけ（お参りの内容と仏壇のリンク入り）</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 招待モーダル ══ -->
+<div class="modal" id="mInvite">
+  <div class="mInner">
+    <button class="mClose" data-close="mInvite">×</button>
+    <div class="mTtl">家族を招く</div>
+    <div id="inviteBody"></div>
+  </div>
+</div>
+
+<!-- ══ 科学監修 ══ -->
+<div class="modal" id="mHayashi">
+  <div class="mInner">
+    <button class="mClose" data-close="mHayashi">×</button>
+    <div class="mTtl">科学監修</div>
+    <div class="mNote" style="font-size:12px;line-height:2.3;margin-top:18px;color:var(--kinu2)">
+      <b style="font-size:14px;letter-spacing:.2em;color:var(--kinu)">林 大輔 博士（心理学）</b><br>
+      <span style="color:var(--kasumi)">声遊楽プロジェクト主宰 ／ 日本たばこ産業 D-LAB・東京大学大学院 元特任研究員</span><br><br>
+      専門は実験心理学・知覚認知・心理物理学。「声」が人の耳にどう届き、どんな印象を生むのか——その対応関係を科学する研究者です。<br><br>
+      <b style="color:var(--kin)">nanoca との関係</b><br>
+      株式会社ナノカの「声標本 KOE-HYOHON」は、声を標準的な音響特徴量（高さ・抑揚・明るさ・柔らかさ・力強さ・大きさ・かすれ）で測り、聴取印象の心理学研究（木戸・粕谷 1999 ほか）を土台に5つの視点（重心・密度・流れ・光・余韻）へ読み取り、一定のルールで花の設計図に翻訳します。この<b>「読み取り」の科学的な妥当性を林博士が監修</b>しています。<br><br>
+      この「声仏前」は、林博士監修下にある声標本の科学と実装をそのまま用いた、大浦家のための作品です。企画・開発は<b>株式会社ナノカ 大浦詩帆</b>（この家の孫です）。<br><br>
+      <span style="color:var(--kasumi)">大切な規律：花は声の解釈・表現・記録であり、性格や優劣の診断・占いではありません。同じ声からは同じ花（でたらめでない）、けれど声は生きものなので二度と同じ花は咲かない（一回きり）——「非再現的な再現性」。</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══ について ══ -->
+<div class="modal" id="mAbout">
+  <div class="mInner">
+    <button class="mClose" data-close="mAbout">×</button>
+    <div class="mTtl">声仏前について</div>
+    <div class="mNote" style="font-size:11.5px;line-height:2.2;margin-top:18px">
+      「声仏前（こえぶつぜん）」は、大浦家のためのリモート仏壇です。離れて暮らす家族が、同じ仏壇に手を合わせられます。<br><br>
+      <b>花のしくみ</b> ─ 「ただいま」の声を端末の中で音響解析し、5つの視点（重心・密度・流れ・光・余韻）と3つの指標（高さ・柔らかさ・力強さ）に数値化。その数値から決定論で一輪の花が咲きます。同じ声からは同じ花。けれど声は生きものなので、二度と同じ花は咲きません（非再現的な再現性）。声標本 KOE-HYOHON（nanoca）の科学にもとづきます。<br><br>
+      <b>データ</b> ─ 声の録音・カメラの映像は端末の外に出ません。家族と共有されるのは、名前・時刻・花の数値だけです。共有スペースは無料の保管場所（jsonblob.com）を使うため、30日以上だれもお参りしないと消えることがあります。大切な花は、時々スクリーンショットでも残してください。<br><br>
+      これは診断や占いではなく、家族のための IT アートです。
+    </div>
+    <button class="mBtnSub" id="btnReset" style="margin-top:20px">この仏壇の記録をすべて消す</button>
+    <div class="mNote" style="text-align:center">花・御仏前・帳のすべてが、家族全員の画面から消えます（もどせません）</div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════
+   基礎（声標本 index.html より移植：mulberry32 / fftRadix2 / clamp01）
+   ═══════════════════════════════════════════════ */
+const clamp01=v=>Math.max(0,Math.min(1,v));
+const c01=clamp01;
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function hashStr(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+function fftRadix2(re,im){
+  const n=re.length;
+  for(let i=1,j=0;i<n;i++){let bit=n>>1;for(;j&bit;bit>>=1)j^=bit;j^=bit;
+    if(i<j){[re[i],re[j]]=[re[j],re[i]];[im[i],im[j]]=[im[j],im[i]]}}
+  for(let len=2;len<=n;len<<=1){
+    const ang=-2*Math.PI/len,wr=Math.cos(ang),wi=Math.sin(ang);
+    for(let i=0;i<n;i+=len){let cr=1,ci=0;
+      for(let k=0;k<len/2;k++){
+        const ur=re[i+k],ui=im[i+k];
+        const vr=re[i+k+len/2]*cr-im[i+k+len/2]*ci;
+        const vi=re[i+k+len/2]*ci+im[i+k+len/2]*cr;
+        re[i+k]=ur+vr;im[i+k]=ui+vi;re[i+k+len/2]=ur-vr;im[i+k+len/2]=ui-vi;
+        const ncr=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=ncr}}}
+}
+const QUIET=/[?&]quiet=1/.test(location.search);
+if(QUIET)document.body.classList.add('quiet');
+
+/* ═══════════════════════════════════════════════
+   声の解析（声標本 f57 の analyzeBuffer を移植。5視点＋林メモ3指標。
+   すべて端末内。音声はこの関数を通った瞬間に数値だけになる）
+   ═══════════════════════════════════════════════ */
+function pitchContour(x,sr){ /* 簡易F0追跡（自己相関）— 声標本のvp.contourの代わり */
+  const ds=Math.max(1,Math.floor(sr/12000)),sr2=sr/ds;
+  const n=Math.floor(x.length/ds),y=new Float32Array(n);
+  for(let i=0;i<n;i++)y[i]=x[i*ds];
+  const W=Math.floor(sr2*0.04),H=Math.floor(sr2*0.025);
+  const minLag=Math.floor(sr2/450),maxLag=Math.floor(sr2/70);
+  const contour=[];const maxFrames=200;
+  const total=Math.floor((n-W)/H);const skip=Math.max(1,Math.ceil(total/maxFrames));
+  for(let f=0;f<total;f+=skip){
+    const off=f*H;let r0=0;
+    for(let i=0;i<W;i+=2)r0+=y[off+i]*y[off+i];
+    if(r0<1e-5)continue;
+    let best=0,bl=0;
+    for(let lag=minLag;lag<=maxLag;lag++){
+      let s=0;for(let i=0;i<W-lag;i+=2)s+=y[off+i]*y[off+i+lag];
+      if(s>best){best=s;bl=lag}}
+    if(bl>0&&best/r0>0.32){const hz=sr2/bl;if(hz>=65&&hz<=460)contour.push({hz})}
+  }
+  return contour;
+}
+function analyzeVoice(x,sr){
+  const N=x.length;
+  const vp={contour:pitchContour(x,sr)};
+  const FS=1024,HOP=512;
+  const hann=new Float32Array(FS);
+  for(let i=0;i<FS;i++)hann[i]=0.5-0.5*Math.cos(2*Math.PI*i/(FS-1));
+  const nF=Math.max(1,Math.floor((N-FS)/HOP));
+  const rms=[],zcr=[],cent=[],lowR=[],flux=[];
+  const alphaA=[],tiltA=[];
+  let prevMag=null;
+  const step=Math.max(1,Math.floor(nF/240));
+  for(let f=0;f<nF;f+=step){
+    const off=f*HOP;let e=0,z=0;
+    const re=new Float32Array(FS),im=new Float32Array(FS);
+    for(let i=0;i<FS;i++){
+      const s=x[off+i]||0;e+=s*s;
+      if(i>0&&((x[off+i-1]<0&&s>=0)||(x[off+i-1]>=0&&s<0)))z++;
+      re[i]=s*hann[i];
+    }
+    const r=Math.sqrt(e/FS);
+    rms.push(r);zcr.push(z/FS);
+    if(r>1e-4){
+      fftRadix2(re,im);
+      const half=FS/2;let ms=0,cw=0,low=0,fl=0,e1k=0,e15=0,e25=0;
+      const mag=new Float32Array(half);
+      for(let k=1;k<half;k++){
+        const m=Math.sqrt(re[k]*re[k]+im[k]*im[k]);
+        mag[k]=m;ms+=m;
+        const hz=k*sr/FS;cw+=m*hz;
+        if(hz<280)low+=m;
+        const pw=m*m;
+        if(hz<1000)e1k+=pw;else if(hz<5000)e15+=pw;
+        if(hz>=2000&&hz<5000)e25+=pw;
+        if(prevMag)fl+=Math.max(0,m-prevMag[k]);
+      }
+      cent.push(ms>0?cw/ms:0);lowR.push(ms>0?low/ms:0);
+      if(e1k>1e-9&&e15>1e-9){alphaA.push(10*Math.log10(e1k/e15));tiltA.push(10*Math.log10(Math.max(1e-9,e25)/e1k))}
+      if(prevMag)flux.push(ms>0?fl/ms:0);
+      prevMag=mag;
+    }
+  }
+  const mean=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
+  const std=a=>{if(!a.length)return 0;const m=mean(a);return Math.sqrt(mean(a.map(v=>(v-m)*(v-m))))};
+  const peak=Math.max(...rms,1e-6);
+  let a0=0,a1=rms.length-1;
+  while(a0<rms.length&&rms[a0]<=peak*0.10)a0++;
+  while(a1>a0&&rms[a1]<=peak*0.10)a1--;
+  const act=rms.slice(a0,a1+1);
+  const voiced=act.filter(r=>r>peak*0.22);
+  const voicedRatio=voiced.length/Math.max(1,act.length);
+  const vc=cent.filter((_,i)=>rms[Math.min(i,rms.length-1)]>peak*0.15);
+  const meanCent=mean(vc.length?vc:cent);
+  let lastPeak=0;
+  for(let i=0;i<rms.length;i++)if(rms[i]>peak*0.6)lastPeak=i;
+  let tail=rms.length-1;
+  for(let i=lastPeak;i<rms.length;i++)if(rms[i]<peak*0.06){tail=i;break}
+  const tailSec=(tail-lastPeak)*(HOP*step)/sr;
+  const core=clamp01(clamp01(mean(lowR)*1.45)*0.62+clamp01(mean(rms)/(peak*0.60))*0.38);
+  const dens=clamp01(clamp01((voicedRatio-0.35)/0.60)*0.55+clamp01(mean(flux)*4)*0.45);
+  let pitchSpread=null;
+  if(vp.contour&&vp.contour.length>=8){
+    const hzs=vp.contour.map(p=>p.hz).sort((a,b)=>a-b);
+    const p10=hzs[Math.floor(hzs.length*0.10)],p90=hzs[Math.floor(hzs.length*0.90)];
+    const semi=12*Math.log2(Math.max(1.0001,p90/Math.max(1,p10)));
+    pitchSpread=clamp01((semi-1.5)/9);
+  }
+  const smArr=[];const Wm=21;
+  for(let i=0;i<act.length;i++){let s=0,c=0;for(let k=-Wm;k<=Wm;k++){const j=i+k;if(j>=0&&j<act.length){s+=act[j];c++}}smArr.push(s/c)}
+  const smv=smArr.filter((_,i)=>act[i]>peak*0.12);
+  const envCV=clamp01(std(smv)/(mean(smv)+1e-6)/0.35);
+  const flow=clamp01(pitchSpread!=null?pitchSpread*0.62+envCV*0.38:envCV);
+  const light=clamp01((meanCent-350)/(3000-350));
+  const after=clamp01(clamp01(tailSec/0.70)*0.50+clamp01(std(zcr)/0.05)*0.28+clamp01(mean(zcr)/0.18)*0.22);
+  const medOf=a=>{if(!a.length)return null;const s=a.slice().sort((x,y)=>x-y);return s[Math.floor(s.length/2)]};
+  const aDb=medOf(alphaA),tDb=medOf(tiltA);
+  const chika=aDb==null?0.5:clamp01(aDb/30);
+  const yawa=tDb==null?0.5:clamp01((-tDb-12)/28);
+  let taka=0.5;
+  if(vp.contour&&vp.contour.length>=8){
+    const lg=vp.contour.map(p=>Math.log2(p.hz));
+    let bestC=lg[0],bestV=-1;
+    for(let i=0;i<lg.length;i++){let v=0;
+      for(let j=0;j<lg.length;j++){const d=lg[j]-lg[i],r=Math.round(d);if(r>=-1&&r<=1&&Math.abs(d-r)<0.12)v++}
+      if(v>bestV){bestV=v;bestC=lg[i]}}
+    let cc0=0,cU=0,cD=0;
+    for(const l of lg){const d=l-bestC,r=Math.round(d);
+      if(Math.abs(d-r)<0.12){if(r===0)cc0++;else if(r===1)cU++;else if(r===-1)cD++}}
+    const anchor=bestC+((cU>cc0&&cU>=cD)?1:((cD>cc0&&cD>cU)?-1:0));
+    const fold=lg.map(l=>l-Math.round(l-anchor)).sort((a,b)=>a-b);
+    const mh=Math.pow(2,fold[Math.floor(fold.length/2)]);
+    if(mh>40)taka=clamp01(Math.log2(mh/80)/2.3219);
+  }
+  /* シード：波形から決定的に（声標本と同じ） */
+  let h=2166136261;
+  for(let i=0;i<N;i+=Math.max(1,Math.floor(N/2048))){h^=Math.round((x[i]+1)*32767);h=Math.imul(h,16777619)}
+  const seed=(h>>>0)||1;
+  return {m:{core,dens,flow,light,after,taka,yawa,chika,dur:N/sr},seed,contour:vp.contour};
+}
+/* 量子化（声標本 spread と同じ目盛り＝送り手と受け手で完全に同じ花） */
+function spread(m){
+  const ks=['core','dens','flow','light','after'];
+  const vs=ks.map(k=>m[k]);
+  const lo=Math.min(...vs),hi=Math.max(...vs);
+  const out={...m};
+  if(hi-lo<0.22){const mid=(hi+lo)/2;
+    ks.forEach(k=>{out[k]=clamp01(mid+(m[k]-mid)*(0.24/Math.max(0.03,hi-lo)))})}
+  ks.forEach(k=>{out[k]=Math.round(clamp01(0.08+out[k]*0.87)*1679615)/1679615});
+  ['taka','yawa','chika'].forEach(k=>{if(m[k]!=null)out[k]=Math.round(clamp01(m[k])*1679615)/1679615});
+  out.dur=Math.round(Math.min(129.5,m.dur||0)*10)/10;
+  return out;
+}
+
+/* ═══════════════════════════════════════════════
+   花の設計（声標本の視点→花の翻訳を、一輪＝真として移植）
+   ═══════════════════════════════════════════════ */
+const VIEWPOINTS=[
+  {key:'core',jp:'重心'},{key:'dens',jp:'密度'},{key:'flow',jp:'流れ'},{key:'light',jp:'光'},{key:'after',jp:'余韻'}
+];
+const NANOCA_NAMES={
+  core:[['燈心','tohshin'],['玉響','tamayura'],['深灯','miakari'],['宵芯','yoishin'],['静芯','shizushin'],['幽灯','yuubi'],['芯月','shinzuki'],['灯座','hikura'],['沈灯','shizubi'],['真芯','mashin'],['奥灯','okubi'],['重響','shigeyura']],
+  dens:[['星鈴','hoshisuzu'],['綾雫','ayashizuku'],['千灯','chitomo'],['密羽','mitsuha'],['群星','murahoshi'],['綴羽','tsuzuriha'],['千珠','chitama'],['繁鈴','shigesuzu'],['粒光','tsubuka'],['重雫','kasanashizuku'],['万灯','yorozubi'],['密音','mitsune']],
+  flow:[['風緒','kazao'],['揺光','yurari'],['絹波','kinunami'],['流詠','ruei'],['波緒','namio'],['風詠','fuei'],['揺緒','yurao'],['流月','rutsuki'],['靡光','nabika'],['川音','kawane'],['風環','kazawa'],['揺羽','yureha']],
+  light:[['白澄','shirasumi'],['透音','sukine'],['朝光','asakage'],['澄衣','sumigoromo'],['澄空','sumizora'],['光緒','mitsuo'],['朝澄','asazumi'],['透光','sukikage'],['白響','shiroyura'],['明衣','akegoromo'],['光珠','mitama'],['澄音','sumine']],
+  after:[['宵鈴','yosuzu'],['余花','yobana'],['夢緒','yumeo'],['遠音','tohne'],['残光','nokoribi'],['余光','yokou'],['遠鈴','tohsuzu'],['夢鈴','yumesuzu'],['幽音','kasukane'],['余響','yoyura'],['暮音','kurene'],['淡尾','awao']],
+};
+const VCOLOR_NAMES={
+  core:['生成','薄金','琥珀'],dens:['霞白','淡藍','薄藍'],flow:['淡桜','桜','珊瑚'],
+  light:['乳白','白緑','蜜色'],after:['淡紫','薄藤','藤色'],
+};
+const VP_BASE_HUE={core:44,dens:212,flow:10,light:96,after:268};
+const FAMS_JP={hira:'平咲き',kasane:'重ね咲き',shindachi:'芯立ち',sori:'反り咲き',sakazuki:'盃咲き',maki:'巻き咲き'};
+const FAC_JP={hari:'張り',kage:'翳り',airashi:'愛らしさ',hin:'品',haku:'迫力'};
+const VP_CENTER={core:0.58,dens:0.55,flow:0.62,light:0.50,after:0.42};
+
+function designFlower(m,seed){
+  /* 際立ちの拡大（f27・正直な拡大鏡。^0.72） */
+  const _amp=(v,C)=>{const d=v-C;return c01(C+(d<0?-1:1)*Math.pow(Math.abs(d),0.72)*0.8236)};
+  const a={core:_amp(m.core,VP_CENTER.core),dens:_amp(m.dens,VP_CENTER.dens),flow:_amp(m.flow,VP_CENTER.flow),
+    light:_amp(m.light,VP_CENTER.light),after:_amp(m.after,VP_CENTER.after),
+    taka:m.taka,yawa:m.yawa,chika:m.chika,dur:m.dur||0};
+  /* 聴取印象5因子（f57・木戸粕谷1999） */
+  const FAC={
+    hari:c01(0.5+(a.light-0.50)*0.50+(a.flow-0.62)*0.35+(a.taka-0.5)*0.30+(a.chika-0.5)*0.15),
+    kage:c01(0.5+(a.after-0.42)*0.55-(a.yawa-0.5)*0.50-(a.taka-0.5)*0.15),
+    airashi:c01(0.5+(a.taka-0.5)*0.60-(a.chika-0.5)*0.35+(a.light-0.50)*0.15),
+    hin:c01(0.5+(a.yawa-0.5)*0.50-(a.flow-0.62)*0.25-(a.taka-0.5)*0.20+(a.after-0.42)*0.15),
+    haku:c01(0.5+(a.chika-0.5)*0.55+(a.core-0.58)*0.30-(a.taka-0.5)*0.30),
+  };
+  const facTop=Object.entries(FAC).sort((x,y)=>y[1]-x[1]||x[0].localeCompare(y[0]))[0];
+  /* 声の調べ→花色の調律（±18°上限＋taka±6） */
+  const hueShift=Math.max(-18,Math.min(18,(a.light-0.50)*34-(a.core-0.58)*26))+Math.max(-6,Math.min(6,(a.taka-0.5)*12));
+  /* 真＝最も際立つ視点 */
+  const sal=VIEWPOINTS.map(vp=>({vp,v:a[vp.key],s:Math.abs(a[vp.key]-VP_CENTER[vp.key])}));
+  const order=sal.slice().sort((x,y)=>y.s-x.s);
+  const shin=order[0];
+  const salV=shin.s;
+  /* 花形の系統（声標本の閾値） */
+  const tip0=c01(0.05+a.light*0.85);
+  const frill0=c01(0.06+a.flow*0.84);
+  let fam;
+  if(frill0>0.60&&a.dens>0.52)fam='kasane';
+  else if(a.core>0.62&&tip0<0.55)fam='shindachi';
+  else if(frill0<0.45&&a.dens<0.55)fam='sakazuki';
+  else if(tip0>0.62)fam='sori';
+  else if(a.after>0.52)fam='maki';
+  else fam='hira';
+  const petals=Math.max(5,Math.min(9,5+Math.round((a.dens-0.3)*2.6+(a.flow-0.2)*1.8)));
+  const openV=Math.max(0.88,0.32+c01(salV*2.4)*0.68); /* 真は必ず深く咲く */
+  const hueU=(VP_BASE_HUE[shin.vp.key]+hueShift+360)%360;
+  const hueP=(hueU+((seed>>3)&1?14:-14)+360)%360;
+  const vv=shin.v;
+  const colorName=VCOLOR_NAMES[shin.vp.key][vv<0.42?0:(vv<0.68?1:2)];
+  const nm=NANOCA_NAMES[shin.vp.key][seed%12];
+  return {
+    fam,famJp:FAMS_JP[fam],
+    name:nm,colorName,
+    vpKey:shin.vp.key,vpJp:shin.vp.jp,
+    facJp:FAC_JP[facTop[0]],facV:facTop[1],
+    hueU,hueP,
+    lean:(((seed>>2)&1)?1:-1)*(0.10+c01(salV*2)*0.07),
+    form:{
+      petals,
+      tip:tip0,frill:frill0,
+      width:c01(0.40+a.core*0.42),
+      open:c01(0.30+openV*0.44), /* 開きすぎると真横から円盤に見える＝椀の姿を保つ */
+      vari:c01(0.25+Math.abs(a.flow-0.62)*2),
+      serr:c01((a.after-0.42)*1.2),
+      whorl2:a.dens>0.55,
+    },
+    amp:a,
+  };
+}
+
+/* ═══════════════════════════════════════════════
+   花のエンジン（Opposite Call に移植されていた声標本の設計図を再移植。
+   petalPts＝声の数値がそのまま花弁の輪郭になる。蕊・収束の光は描かない）
+   ═══════════════════════════════════════════════ */
+function petalPts(len,wid,q){
+  q=q||{tip:0.3,frill:0.3,belly:0.5};
+  const serr=q.serr||0,ph=q.ph||0;
+  const N=serr>0.2?30:15;
+  const ea=0.60+q.tip*0.64,eb=0.86-q.belly*0.26+q.tip*0.38;
+  const wAt=t=>Math.pow(Math.sin(Math.PI*Math.pow(t,ea)),eb);
+  const frillF=2.0+q.frill*2.6,frillA=0.02+q.frill*0.16;
+  const serrF=7+serr*9,serrA=serr*0.055;
+  const tri=x=>Math.abs(((x/Math.PI)%2+2)%2-1)*2-1;
+  const round=0.20*(1-q.tip),tCap=1-Math.max(0.04,round);
+  const side=t=>(wAt(t)+(frillA*Math.sin(frillF*Math.PI*t+ph)+serrA*tri(serrF*Math.PI*t+ph*1.7))*Math.sin(Math.PI*t))*wid;
+  const pts=[];
+  for(let i=0;i<=N;i++){const t=i/N*tCap;pts.push([side(t),t*len])}
+  if(round>0.05){const wc=side(tCap);for(let a2=1;a2<6;a2++){const ang=a2/6*Math.PI;pts.push([Math.cos(ang)*wc,tCap*len+Math.sin(ang)*round*len])}}
+  else pts.push([0,len]);
+  for(let i=N;i>=0;i--){const t=i/N*tCap;pts.push([-side(t),t*len])}
+  return pts;
+}
+function buildSketch(fp,seed){
+  const srng=mulberry32(seed^0x9e37);
+  const fm=fp.form,fam=fp.fam,vv=fm.vari;
+  const pv=b=>({tip:c01(b.tip+(srng()-0.5)*0.24*vv),frill:c01(b.frill+(srng()-0.5)*0.34*vv),
+    belly:c01(b.belly+(srng()-0.5)*0.20*vv),serr:(b.serr!=null?b.serr:fm.serr)||0,ph:srng()*Math.PI*2});
+  const petals=[];
+  const put=(len,wid,q,op,vein,yaw,whorl,tiltF,bend)=>{
+    petals.push({pts:petalPts(len,wid,q),len,ang:yaw+(srng()-0.5)*0.07,
+      rotz:(srng()-0.5)*0.20,op,vein,whorl,tiltF:tiltF||0.5,bend:bend||0.5});
+  };
+  const addStamens=(cnt,tl,op,tick)=>{if(tick)for(let i=0;i<cnt;i++)srng()};
+  if(fam==='hira'){
+    const cnt=Math.max(3,Math.min(fm.petals,9));
+    const len=0.94+fm.width*0.40,wid=0.38+fm.width*0.48;
+    const q={tip:fm.tip,frill:fm.frill,belly:fm.width};
+    const tf=0.10+fm.open*0.84;
+    for(let i=0;i<cnt;i++)
+      put(len*(0.90+srng()*(0.12+0.14*vv)),wid*(0.94+srng()*0.12*vv),pv(q),0.78,true,i/cnt*Math.PI*2,0,tf,0.5);
+    if(fm.whorl2)for(let i=0;i<cnt-1;i++)
+      put(len*0.62,wid*0.78,pv(q),0.70,true,i/(cnt-1)*Math.PI*2+Math.PI/cnt,1,tf*0.55,0.5);
+    addStamens(5,0.24+fm.open*0.14,0.42);
+  }else if(fam==='kasane'){
+    const whorls=3+(fm.petals>6?1:0);
+    for(let w=0;w<whorls;w++){
+      const t=w/whorls,cnt=Math.max(5,fm.petals-w);
+      const q={tip:Math.min(0.4,fm.tip*0.5),frill:Math.min(1,fm.frill*1.25+0.18),
+        belly:Math.max(0.5,fm.width),serr:(fm.serr||0)*0.7};
+      for(let i=0;i<cnt;i++)
+        put((1.02-t*0.50)*(0.94+srng()*0.12),0.52-t*0.10,pv(q),0.74-t*0.12,w===0,(i+w*0.5)/cnt*Math.PI*2,w,0.16+fm.open*(0.72-t*0.44),0.55);
+    }
+    addStamens(6,0.20,0.35);
+  }else if(fam==='shindachi'){
+    const cnt=Math.max(6,Math.min(8,fm.petals+2));
+    const q={tip:Math.min(0.30,fm.tip),frill:fm.frill*0.5,belly:Math.max(0.62,fm.width),serr:(fm.serr||0)*0.35};
+    for(let i=0;i<cnt;i++)
+      put(1.02*(0.94+srng()*0.12),0.62,pv(q),0.78,true,i/cnt*Math.PI*2,0,0.55+fm.open*0.30,0.35);
+    addStamens(14,0.34,0.55);
+  }else if(fam==='sori'){
+    const q={tip:Math.max(0.72,fm.tip),frill:fm.frill*0.4,belly:Math.min(0.35,fm.width),serr:(fm.serr||0)*0.3};
+    for(let i=0;i<6;i++)
+      put(1.28*(0.94+srng()*0.12),0.34,pv(q),0.80,true,i/6*Math.PI*2,0,0.55,1.4);
+    addStamens(6,0,0.5,true);
+  }else if(fam==='sakazuki'){
+    const q={tip:0.20,frill:Math.min(0.25,fm.frill),belly:0.55};
+    for(let i=0;i<5;i++)
+      put(0.96*(0.96+srng()*0.08),0.56,pv(q),0.76,false,i/5*Math.PI*2,0,0.42+fm.open*0.30,0.5);
+    addStamens(5,0.22,0.4);
+  }else{ /* maki */
+    for(let w=0;w<3;w++){
+      const t=w/3,cnt=5+w*2;
+      const q={tip:0.15,frill:0.22,belly:0.62,serr:(fm.serr||0)*0.3};
+      for(let i=0;i<cnt;i++)
+        put((1.0-t*0.42)*(0.95+srng()*0.10),0.55-t*0.12,pv(q),0.72,false,(i+w*0.37)/cnt*Math.PI*2,w,0.22+fm.open*0.55*(1-t*0.6),0.5);
+    }
+  }
+  petals.forEach((p,i)=>{
+    p.stag=i/petals.length;
+    p.colHue=(i%2)?fp.hueU:fp.hueP;
+  });
+  return {petals};
+}
+function openVal(p,prog){return 1-Math.pow(1-c01((prog-0.12-p.stag*0.34)/0.54),3)}
+function flowerScreenPoint(p,pt,prog,S,view,lean){
+  const open=openVal(p,prog);
+  if(open<=0.002)return null;
+  const px=pt[0]*open,py=pt[1]*open;
+  const phi=0.14+p.tiltF*(Math.PI/2-0.14)*open;
+  const phiT=phi*(1+0.30*(py/Math.max(0.001,p.len))*p.bend);
+  const h=py*Math.cos(phiT)+p.whorl*0.055,rh=py*Math.sin(phiT)+0.055;
+  const a2=p.ang+view.yaw+view.spin;
+  const X=rh*Math.sin(a2)+px*Math.cos(a2);
+  const D=rh*Math.cos(a2)-px*Math.sin(a2);
+  const sx=X*S,sy=(-h*(1.0-view.pitch*0.5)+D*view.pitch)*S;
+  const cl=Math.cos(lean),sl=Math.sin(lean);
+  return [sx*cl-sy*sl,sx*sl+sy*cl,D];
+}
+function drawFlowerTo(ctx,sketch,fp,seed,o){
+  /* o={cx,cy,S,prog,view:{yaw,pitch,spin},bottomY,alpha} */
+  const al=o.alpha==null?1:o.alpha;
+  const lean=fp.lean||0;
+  /* 茎（星座の直線＋節の星） */
+  const stemP=c01(o.prog/0.22);
+  if(stemP>0&&o.bottomY!=null){
+    const sl=Math.sin(lean),clc=Math.cos(lean);
+    const topX=o.cx-0.10*o.S*sl,topY=o.cy+0.10*o.S*clc;
+    const rngS=mulberry32(seed^0x77);
+    const K=[(rngS()-0.5)*16,(rngS()-0.5)*16,(rngS()-0.5)*12];
+    const pts=[[o.cx+K[0]*0.4,o.bottomY]];
+    for(let i=0;i<3;i++){const t=(i+1)/4;
+      pts.push([o.cx+(topX-o.cx)*t+K[i]*(1-t),o.bottomY+(topY-o.bottomY)*t])}
+    pts.push([topX,topY]);
+    const total=4,M=stemP*total;
+    ctx.strokeStyle=`rgba(233,231,221,${0.45*al})`;ctx.lineWidth=1.05;ctx.beginPath();
+    ctx.moveTo(pts[0][0],pts[0][1]);
+    for(let i=1;i<=Math.floor(M);i++)ctx.lineTo(pts[i][0],pts[i][1]);
+    if(M<total&&M>Math.floor(M)){const i=Math.floor(M),f=M-i;
+      ctx.lineTo(pts[i][0]+(pts[i+1][0]-pts[i][0])*f,pts[i][1]+(pts[i+1][1]-pts[i][1])*f)}
+    ctx.stroke();
+    ctx.fillStyle=`rgba(233,231,221,${0.6*al})`;
+    for(let i=1;i<=Math.min(3,Math.floor(M));i++){
+      ctx.globalAlpha=0.55*al;
+      ctx.beginPath();ctx.arc(pts[i][0],pts[i][1],1.15,0,7);ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+  ctx.save();ctx.translate(o.cx,o.cy);
+  const order=[...sketch.petals].sort((a2,b)=>Math.cos(a2.ang+o.view.yaw+o.view.spin)-Math.cos(b.ang+o.view.yaw+o.view.spin));
+  order.forEach(p=>{
+    const path=[];
+    for(const pt of p.pts){const q=flowerScreenPoint(p,pt,o.prog,o.S,o.view,lean);if(!q){path.length=0;break}path.push(q)}
+    if(!path.length)return;
+    const open=openVal(p,o.prog);
+    ctx.beginPath();path.forEach((q,i)=>{i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1])});ctx.closePath();
+    ctx.globalAlpha=0.19*Math.min(1,open*1.3)*al;
+    ctx.fillStyle=`hsla(${p.colHue},48%,70%,1)`;
+    ctx.fill();
+    ctx.globalAlpha=p.op*0.72*Math.min(1,open*1.2)*al;
+    ctx.strokeStyle=`hsla(${p.colHue},26%,88%,1)`;ctx.lineWidth=0.65;ctx.stroke();
+  });
+  ctx.restore();ctx.globalAlpha=1;
+}
+
+/* ═══════════════════════════════════════════════
+   状態と共有（声は出ない。名前・時刻・花の数値だけ）
+   ═══════════════════════════════════════════════ */
+/* ── LINEの中で開かせない（カメラ・マイクが使えないため） ──
+   LINE内ブラウザは「openExternalBrowser=1」つきURLを外部ブラウザで開く。
+   招待リンクには常にこの合図を付け、万一LINE内で開かれたら即座に退避する */
+const IN_LINE=/\bLine\//i.test(navigator.userAgent);
+function extUrl(url){
+  const [base,hash]=url.split('#');
+  if(/openExternalBrowser=1/.test(base))return url;
+  const sep=base.includes('?')?'&':'?';
+  return base+sep+'openExternalBrowser=1'+(hash?'#'+hash:'');
+}
+if(IN_LINE){
+  try{
+    if(!sessionStorage.getItem('kb_ext')){
+      sessionStorage.setItem('kb_ext','1');
+      location.replace(extUrl(location.href)); /* LINEが外部ブラウザへ送り出す */
+    }
+  }catch(e){}
+  /* それでもLINEの中に残っている人への道しるべ */
+  document.addEventListener('DOMContentLoaded',()=>{
+    const w=document.createElement('div');
+    w.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99;background:#3d2e1b;color:#efe6d0;font-size:11px;letter-spacing:.08em;line-height:1.8;padding:10px 14px;text-align:center;border-bottom:1px solid rgba(200,164,72,.5)';
+    w.innerHTML='LINEの中では、カメラとマイクが使えません。<br>右下の「…」から<b>「他のアプリで開く」</b>を選んでください。';
+    document.body.appendChild(w);
+  });
+}
+const LS_KEY='oura_butsudan_v1';
+let state={v:1,flowers:[],envelopes:[]};
+let syncId=null; /* jsonblob の blobId */
+try{
+  const cached=localStorage.getItem(LS_KEY);
+  if(cached)state=JSON.parse(cached);
+}catch(e){}
+(function readParams(){
+  const mS=location.search.match(/[?&]s=([A-Za-z0-9-]+)/);
+  if(mS)syncId=mS[1];
+  if(location.hash.startsWith('#h=')){ /* 持ち寄りリンク */
+    try{
+      const inc=JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3)))));
+      mergeState(inc);saveLocal();
+      history.replaceState(null,'',location.pathname+location.search);
+    }catch(e){}
+  }
+})();
+function saveLocal(){try{localStorage.setItem(LS_KEY,JSON.stringify(state))}catch(e){}}
+function mergeState(inc){
+  if(!inc)return false;
+  let changed=false;
+  /* 取り消しは墓標（tombstone）で伝える＝どの端末で消しても、全員の仏壇から消える */
+  state.removed=state.removed||[];
+  const rm=new Set(state.removed);
+  (inc.removed||[]).forEach(id=>{if(id&&!rm.has(id)){rm.add(id);changed=true}});
+  state.removed=[...rm];
+  const addAll=(mine,theirs)=>{
+    const ids=new Set(mine.map(x=>x.id));
+    (theirs||[]).forEach(x=>{if(x&&x.id&&!ids.has(x.id)&&!rm.has(x.id)){mine.push(x);ids.add(x.id);changed=true}});
+    mine.sort((a,b)=>a.t-b.t);
+  };
+  state.sake=state.sake||[];
+  addAll(state.flowers,inc.flowers);
+  addAll(state.envelopes,inc.envelopes);
+  addAll(state.sake,inc.sake);
+  const f0=state.flowers.length,e0=state.envelopes.length,s0=state.sake.length;
+  state.flowers=state.flowers.filter(x=>!rm.has(x.id));
+  state.envelopes=state.envelopes.filter(x=>!rm.has(x.id));
+  state.sake=state.sake.filter(x=>!rm.has(x.id));
+  if(state.flowers.length!==f0||state.envelopes.length!==e0||state.sake.length!==s0)changed=true;
+  return changed;
+}
+function removeItem(id){
+  state.removed=state.removed||[];
+  if(!state.removed.includes(id))state.removed.push(id);
+  state.flowers=state.flowers.filter(x=>x.id!==id);
+  state.envelopes=state.envelopes.filter(x=>x.id!==id);
+  state.sake=(state.sake||[]).filter(x=>x.id!==id);
+  saveLocal();renderAll();syncPush();
+}
+function resetAll(){ /* 過去ログの全消去：墓標にして全員の仏壇から消す */
+  state.removed=state.removed||[];
+  [...state.flowers,...state.envelopes,...(state.sake||[])].forEach(x=>{if(x.id&&!state.removed.includes(x.id))state.removed.push(x.id)});
+  state.flowers=[];state.envelopes=[];state.sake=[];
+  try{localStorage.removeItem('oura_visited')}catch(e){}
+  saveLocal();renderAll();syncPush();
+}
+const JB='https://jsonblob.com/api/jsonBlob';
+async function syncPull(quietErr){
+  if(!syncId)return false;
+  try{
+    const r=await fetch(JB+'/'+syncId,{headers:{'Accept':'application/json'}});
+    if(!r.ok)throw 0;
+    const remote=await r.json();
+    const changed=mergeState(remote);
+    if(changed){saveLocal();renderAll()}
+    setSync('家族と同期しています');
+    return true;
+  }catch(e){if(!quietErr)setSync('同期できませんでした（電波を確認）');return false}
+}
+async function syncPush(){
+  if(!syncId){setSync('');return}
+  try{
+    await syncPull(true); /* 先に取り込んでから */
+    await fetch(JB+'/'+syncId,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)});
+    setSync('家族と同期しています');
+  }catch(e){setSync('送信できませんでした。あとで自動で再送します')}
+}
+async function createSpace(){
+  const r=await fetch(JB,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(state)});
+  if(!r.ok)throw new Error('create failed');
+  const loc=r.headers.get('Location')||r.headers.get('location');
+  if(!loc)throw new Error('no location');
+  const id=loc.split('/').pop();
+  if(!id)throw new Error('no id');
+  return id;
+}
+function setSync(t){document.getElementById('syncState').textContent=t}
+setInterval(()=>{if(syncId&&!document.hidden)syncPull(true)},6000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&syncId)syncPull(true)});
+
+/* ═══════════════════════════════════════════════
+   おりんと、誕生の和音（音の作法：柔らかく・水の中で・出口に岸辺）
+   ═══════════════════════════════════════════════ */
+let AC=null,master=null;
+function audio(){
+  if(AC)return AC;
+  /* 音の通り道の型（playback/play-and-record）は setSession() が一元管理する */
+  AC=new (window.AudioContext||window.webkitAudioContext)();
+  const comp=AC.createDynamicsCompressor();
+  comp.threshold.value=-26;comp.ratio.value=5;comp.knee.value=20;
+  master=AC.createGain();master.gain.value=1.9;
+  master.connect(comp);comp.connect(AC.destination);
+  return AC;
+}
+function rin(gain){
+  /* おりん：高く澄んだ声。2本の弦のかすかなうねり（1.5音差のビート）＝心地よい揺れ */
+  try{
+    const ac=audio();if(ac.state==='suspended')ac.resume();
+    const t0=ac.currentTime+0.02;
+    const g0=ac.createGain();g0.gain.value=1;
+    const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=8200;lp.Q.value=0.3;
+    g0.connect(lp);lp.connect(master);
+    const F=1244; /* 高いおりん（小りん）の澄んだ基音 */
+    [[1,1],[1.005,0.62],[2.32,0.20],[3.01,0.10],[4.55,0.05],[6.13,0.02]].forEach(([r,a])=>{
+      const o=ac.createOscillator(),g=ac.createGain();
+      o.frequency.value=F*r;
+      g.gain.setValueAtTime(0,t0);
+      g.gain.linearRampToValueAtTime(a*(gain||0.13),t0+0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001,t0+7.5/Math.sqrt(r));
+      o.connect(g);g.connect(g0);o.start(t0);o.stop(t0+8);
+    });
+  }catch(e){}
+}
+/* ボタンの音：おりんではない、水滴のようなやさしい一粒 */
+function uiTone(vol,base){
+  try{
+    const ac=audio();if(ac.state==='suspended')ac.resume();
+    const t0=ac.currentTime+0.01;
+    const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=2400;lp.Q.value=0.5;
+    lp.connect(master);
+    [[1,1],[1.5,0.4]].forEach(([r,a])=>{ /* 完全五度：どこにも刺さらない */
+      const o=ac.createOscillator(),g=ac.createGain();
+      o.type='sine';o.frequency.value=(base||523.25)*r;
+      g.gain.setValueAtTime(0,t0);
+      g.gain.linearRampToValueAtTime(a*(vol||0.06),t0+0.014);
+      g.gain.setTargetAtTime(0.0001,t0+0.03,0.11);
+      o.connect(g);g.connect(lp);o.start(t0);o.stop(t0+0.7);
+    });
+  }catch(e){}
+}
+/* 扉の音：襖・重い木戸。①木の擦れ（決定論ノイズ）②ぎ…ぎ…という軋み（粒のトレモロ）③開ききりの「こと…」 */
+function creak(){
+  try{
+    const ac=audio();if(ac.state==='suspended')ac.resume();
+    const t0=ac.currentTime+0.05;
+    /* ① 襖の擦れ：低く均したノイズを木の帯域で（乱数は固定シード＝決定論） */
+    const dur=2.7;
+    const nb=ac.createBuffer(1,Math.floor(ac.sampleRate*dur),ac.sampleRate);
+    const nd=nb.getChannelData(0);const r=mulberry32(727);
+    let lp1=0;
+    for(let i=0;i<nd.length;i++){const w=r()*2-1;lp1=lp1*0.962+w*0.038;nd[i]=lp1*7}
+    const src=ac.createBufferSource();src.buffer=nb;
+    const bp=ac.createBiquadFilter();bp.type='bandpass';bp.frequency.value=185;bp.Q.value=0.8;
+    const g=ac.createGain();
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.linearRampToValueAtTime(0.30,t0+0.5);
+    g.gain.setTargetAtTime(0.18,t0+1.4,0.5);
+    g.gain.setTargetAtTime(0.0001,t0+2.1,0.22);
+    src.connect(bp);bp.connect(g);g.connect(master);
+    src.start(t0);
+    /* ② 重い軋み：低いのこぎり波が、ぎ…ぎ…と粒でひっかかる */
+    const o=ac.createOscillator();o.type='sawtooth';
+    o.frequency.setValueAtTime(92,t0);
+    o.frequency.linearRampToValueAtTime(118,t0+1.7);
+    o.frequency.linearRampToValueAtTime(100,t0+2.4);
+    const lp2=ac.createBiquadFilter();lp2.type='lowpass';lp2.frequency.value=520;lp2.Q.value=0.7;
+    const trem=ac.createOscillator();trem.type='triangle';
+    trem.frequency.setValueAtTime(7.0,t0);
+    trem.frequency.linearRampToValueAtTime(4.4,t0+2.2);
+    const tg=ac.createGain();tg.gain.value=0.020;
+    const g2=ac.createGain();
+    g2.gain.setValueAtTime(0.0001,t0);
+    g2.gain.linearRampToValueAtTime(0.040,t0+0.6);
+    g2.gain.setTargetAtTime(0.026,t0+1.5,0.4);
+    g2.gain.setTargetAtTime(0.0001,t0+2.15,0.2);
+    trem.connect(tg);tg.connect(g2.gain);
+    o.connect(lp2);lp2.connect(g2);g2.connect(master);
+    o.start(t0);o.stop(t0+3.1);trem.start(t0);trem.stop(t0+3.1);
+    /* ③ 開ききって、こと… */
+    const th=ac.createOscillator();th.type='sine';
+    th.frequency.setValueAtTime(95,t0+2.55);
+    th.frequency.exponentialRampToValueAtTime(56,t0+2.85);
+    const g3=ac.createGain();
+    g3.gain.setValueAtTime(0.0001,t0+2.55);
+    g3.gain.linearRampToValueAtTime(0.12,t0+2.58);
+    g3.gain.setTargetAtTime(0.0001,t0+2.63,0.09);
+    th.connect(g3);g3.connect(master);th.start(t0+2.55);th.stop(t0+3.3);
+  }catch(e){}
+}
+/* お酒を注ぐ音：ちょろちょろ…（細いせせらぎ＋とき折りのしずく。決定論ノイズ） */
+function pourSound(){
+  try{
+    const ac=audio();if(ac.state==='suspended')ac.resume();
+    const t0=ac.currentTime+0.05,dur=1.6;
+    const nb=ac.createBuffer(1,Math.floor(ac.sampleRate*dur),ac.sampleRate);
+    const nd=nb.getChannelData(0);const r=mulberry32(4649);
+    for(let i=0;i<nd.length;i++)nd[i]=r()*2-1;
+    const src=ac.createBufferSource();src.buffer=nb;
+    const bp=ac.createBiquadFilter();bp.type='bandpass';bp.frequency.setValueAtTime(2400,t0);
+    bp.frequency.linearRampToValueAtTime(3100,t0+1.2);bp.Q.value=1.6;
+    const g=ac.createGain();
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.linearRampToValueAtTime(0.045,t0+0.18);
+    g.gain.setTargetAtTime(0.032,t0+0.9,0.3);
+    g.gain.setTargetAtTime(0.0001,t0+1.32,0.12);
+    const wob=ac.createOscillator();wob.type='sine';wob.frequency.value=11.3; /* ちょろちょろの揺れ */
+    const wg=ac.createGain();wg.gain.value=0.016;
+    wob.connect(wg);wg.connect(g.gain);
+    src.connect(bp);bp.connect(g);g.connect(master);
+    src.start(t0);wob.start(t0);wob.stop(t0+dur+0.2);
+    /* とき折り、しずくの粒（上向きのチャープ＝水の音色） */
+    [0.35,0.72,1.08].forEach((dt,i)=>{
+      const o=ac.createOscillator();o.type='sine';
+      o.frequency.setValueAtTime(620+i*90,t0+dt);
+      o.frequency.exponentialRampToValueAtTime(1500+i*160,t0+dt+0.07);
+      const dg=ac.createGain();
+      dg.gain.setValueAtTime(0.0001,t0+dt);
+      dg.gain.linearRampToValueAtTime(0.035,t0+dt+0.012);
+      dg.gain.setTargetAtTime(0.0001,t0+dt+0.03,0.05);
+      o.connect(dg);dg.connect(master);o.start(t0+dt);o.stop(t0+dt+0.3);
+    });
+  }catch(e){}
+}
+document.getElementById('osakeBtn').addEventListener('click',function(){
+  if(this.classList.contains('pour'))return;
+  pourSound();
+  this.classList.add('pour');
+  const b=this;
+  setTimeout(()=>{b.classList.add('filled')},500); /* お猪口が満ちていく */
+  setTimeout(()=>{b.classList.remove('pour')},1750);
+  /* 一杯の記録（お酒の帳へ・家族にも同期） */
+  const n=localStorage.getItem('oura_butsudan_name')||'どなたか';
+  const t=Math.floor(Date.now()/1000);
+  state.sake=state.sake||[];
+  state.sake.push({id:'s'+t.toString(36)+'-'+hashStr(n+t).toString(36),n,t});
+  state.sake.sort((a,b)=>a.t-b.t);
+  saveLocal();renderCho();syncPush();
+});
+document.getElementById('orinBtn').addEventListener('click',()=>rin(0.18));
+/* 音の通り道を最初のタップで確保する（マナーモード対策の保険）：
+   無音の音声を裏でループ再生すると、iOSはこのページを「音楽を流すページ」として扱う */
+let _unlocked=false,silentAudioEl=null;
+function setSession(type){ /* iOSの音の通り道：playback=出力のみ／play-and-record=マイクも */
+  try{if(navigator.audioSession)navigator.audioSession.type=type}catch(e){}
+}
+function unlockAudio(){
+  if(!_unlocked){
+    _unlocked=true;
+    if(!visitRunning)setSession('playback'); /* ふだんの音は「音楽」扱い＝マナーモードでも鳴る */
+    try{
+      const a=document.createElement('audio');
+      a.setAttribute('playsinline','');a.loop=true;a.volume=0.01;
+      a.src='data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA';
+      a.play().catch(()=>{});
+      document.body.appendChild(a);
+      silentAudioEl=a;
+    }catch(e){}
+  }
+  try{if(AC&&AC.state==='suspended')AC.resume()}catch(e){}
+}
+document.addEventListener('pointerdown',unlockAudio,true);
+/* 扉：ふれると、きしみの音とともにズームしながらひらく */
+let doorsOpened=QUIET;
+function openDoors(){
+  if(doorsOpened)return true; /* すでに開いている */
+  doorsOpened=true;
+  creak();
+  document.body.classList.add('doorsOpen');
+  return false; /* いま開いたところ */
+}
+document.getElementById('butsudanPersp').addEventListener('click',e=>{
+  if(!doorsOpened){e.preventDefault();openDoors()}
+});
+if(QUIET)document.body.classList.add('doorsOpen');
+/* ボタンにはやさしい一粒（おりんは おりんだけ） */
+document.addEventListener('click',e=>{
+  if(e.target.closest('.orin'))return;
+  if(e.target.closest('.btn,.mBtn,.mBtnSub,#btnInvite,#btnEnv,.mClose,#invCopy,#invShare,#btnAbout,.choDel'))uiTone();
+},true);
+
+/* ═══════════════════════════════════════════════
+   声の旋律（声標本より移植：実F0→ペンタ量子化・月の光の和声・
+   水の膜と根音・出口の岸辺。すべて決定論＝同じ声からは同じ旋律）
+   ═══════════════════════════════════════════════ */
+const PENTA=[261.63,293.66,329.63,392.00,440.00,523.25,587.33,659.25,783.99,880.00]; /* Cメジャー・ペンタトニック */
+const DEB_CHORDS=[[ 87.31,220.00,261.63,329.63],   /* 1. F△9 ：IV — 8小節の物語（毎小節すすむ） */
+                  [ 98.00,246.94,293.66,440.00],   /* 2. G9  ：V   */
+                  [ 82.41,196.00,293.66,369.99],   /* 3. Em9 ：iii */
+                  [110.00,261.63,329.63,493.88],   /* 4. Am9 ：vi  */
+                  [ 73.42,174.61,261.63,329.63],   /* 5. Dm9 ：ii — 下へ沈み */
+                  [ 98.00,246.94,293.66,440.00],   /* 6. G9  ：V  — 満ちて   */
+                  [ 65.41,164.81,246.94,293.66],   /* 7. C△9 ：I  — 一瞬だけ、家に帰る */
+                  [ 82.41,207.65,293.66,415.30]];  /* 8. E7(9)：III7 — そしてまた、切なく離れていく */
+let melodyBusN=null;
+function melodyBus(ac){
+  if(melodyBusN&&melodyBusN.ac===ac)return melodyBusN;
+  /* 出口の岸辺（f27）：コンプレッサ＋メイクアップで「静かだが確かに聞こえる」 */
+  let shore=null;
+  try{
+    shore=ac.createDynamicsCompressor();
+    shore.threshold.value=-26;shore.knee.value=20;shore.ratio.value=5;
+    shore.attack.value=0.006;shore.release.value=0.45;
+  }catch(e){shore=null}
+  const mk=ac.createGain();mk.gain.value=shore?2.6:1.6;
+  if(shore){shore.connect(mk)}
+  const outNode=shore||mk;
+  mk.connect(ac.destination);
+  const dry=ac.createGain();dry.gain.value=0.78;dry.connect(outNode);
+  const wet=ac.createGain();wet.gain.value=0.50;
+  try{
+    const conv=ac.createConvolver();
+    const sr=ac.sampleRate,len=Math.floor(sr*2.6),ir=ac.createBuffer(2,len,sr);
+    const r=mulberry32(20260707); /* 固定シード＝毎回同じ余韻。決定論 */
+    for(let ch=0;ch<2;ch++){const d=ir.getChannelData(ch);for(let i=0;i<len;i++){const t=i/len;d[i]=(r()*2-1)*Math.pow(1-t,2.2)*0.5}}
+    conv.buffer=ir;wet.connect(conv);conv.connect(outNode);
+  }catch(e){wet.gain.value=0}
+  melodyBusN={ac,dry,wet,out:mk};
+  return melodyBusN;
+}
+function waterTone(ac,freq,t0,dur,mul,pan){ /* 水の膜：ふわっと満ちて、鳴り続け、ゆっくり水に溶ける */
+  mul=mul||1;
+  const bus=melodyBus(ac);
+  const master=ac.createGain();master.gain.value=0.0001;
+  const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=Math.min(1400,380+freq*1.4);lp.Q.value=0.4;
+  const lfo=ac.createOscillator();lfo.type='sine';lfo.frequency.value=0.19;
+  const lg=ac.createGain();lg.gain.value=Math.min(500,freq*0.5);
+  lfo.connect(lg);lg.connect(lp.frequency);lfo.start(t0);lfo.stop(t0+dur+2.5);
+  let out=lp;
+  if(ac.createStereoPanner){const p=ac.createStereoPanner();p.pan.value=pan||0;lp.connect(p);out=p}
+  const dg=ac.createGain();dg.gain.value=0.36;
+  out.connect(dg);dg.connect(bus.dry);
+  const wg=ac.createGain();wg.gain.value=1.40;
+  out.connect(wg);wg.connect(bus.wet);
+  [[1,1.0,-4],[1,0.62,4],[2,0.07,0]].forEach(pr=>{
+    const o=ac.createOscillator();o.type='sine';
+    o.frequency.value=freq*pr[0]*(1+pr[2]/1200/10);
+    const g=ac.createGain();
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.linearRampToValueAtTime(pr[1],t0+0.45);
+    g.gain.setTargetAtTime(pr[1]*0.72,t0+0.6,1.8);
+    g.gain.setTargetAtTime(0.0001,t0+Math.max(0.8,dur*0.72),1.1);
+    o.connect(g);g.connect(master);o.start(t0);o.stop(t0+dur+2.5);
+  });
+  master.connect(lp);
+  master.gain.setValueAtTime(0.22*mul,t0);
+}
+function bassTone(ac,freq,t0,dur,mul,pan){ /* 根音：弓がのるように、ゆっくり温かく */
+  mul=mul||1;
+  const bus=melodyBus(ac);
+  const master=ac.createGain();master.gain.value=0.0001;
+  let out=master;
+  if(ac.createStereoPanner){const p=ac.createStereoPanner();p.pan.value=pan||0;master.connect(p);out=p}
+  out.connect(bus.dry);out.connect(bus.wet);
+  [[0.5,0.55,4.4],[1,1.0,3.4],[2,0.78,2.3],[3,0.34,1.3],[4,0.12,0.8]].forEach(pr=>{
+    const o=ac.createOscillator();o.type='sine';o.frequency.value=freq*pr[0];
+    const g=ac.createGain();
+    g.gain.setValueAtTime(pr[1],t0);
+    g.gain.setTargetAtTime(pr[1]*0.15,t0+0.10,pr[2]*0.5);
+    o.connect(g);g.connect(master);o.start(t0);o.stop(t0+dur+0.6);
+  });
+  master.gain.setValueAtTime(0.0001,t0);
+  master.gain.exponentialRampToValueAtTime(0.16*mul,t0+0.085);
+  master.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+}
+/* 声の音列：contour 全フレームをペンタへ量子化し、同音の連なりを1音符に束ねる */
+function seqFromContour(contour,m){
+  if(contour&&contour.length>=5){
+    const med=a=>{const s=a.slice().sort((p,q)=>p-q);return s[s.length>>1]};
+    const center=med(contour.map(p=>p.hz));
+    const idxs=contour.map(p=>{
+      const semi=12*Math.log2(Math.max(1e-3,p.hz/center));
+      return Math.max(0,Math.min(PENTA.length-1,Math.round(4.5+semi*1.15/2.4)));
+    });
+    const seq=[];let cur=idxs[0],run=1;
+    for(let i=1;i<=idxs.length;i++){
+      if(i<idxs.length&&idxs[i]===cur){run++;continue}
+      if(run>=2||!seq.length)seq.push([cur,run]);
+      else seq[seq.length-1][1]+=run;
+      if(i<idxs.length){cur=idxs[i];run=1}
+    }
+    if(seq.length>=3)return seq.slice(0,48);
+  }
+  /* ささやき等でF0が取れない声：5視点の5音（声標本のフォールバックと同じ思想） */
+  return ['core','dens','flow','light','after'].map(k=>[Math.round(clamp01(m[k])*9),3]);
+}
+/* 誕生のあいだ流れつづける旋律ループ（1音＝全音符・和音は毎小節すすむ・約61bpm） */
+let bloomLoop={on:false,seq:null,grid0:0,melSlot:0,accMeas:0,loopLen:8,timer:null};
+function bloomMelodyStart(seq){
+  try{
+    const ac=audio();if(ac.state==='suspended')ac.resume();
+    if(bloomLoop.on)bloomMelodyStop(true);
+    const bus=melodyBus(ac);
+    bus.out.gain.cancelScheduledValues(ac.currentTime);
+    bus.out.gain.setValueAtTime(2.6,ac.currentTime);
+    bloomLoop.on=true;bloomLoop.seq=seq;
+    bloomLoop.loopLen=Math.max(8,Math.ceil(seq.length/8)*8); /* ループ頭で旋律と和音が必ず同時に帰る */
+    bloomLoop.grid0=ac.currentTime+0.12;
+    bloomLoop.melSlot=0;bloomLoop.accMeas=0;
+    bloomLoopPump();
+  }catch(e){}
+}
+function bloomLoopPump(){
+  if(!bloomLoop.on||!AC)return;
+  const ac=AC,BEAT=0.98;
+  if(bloomLoop.grid0+bloomLoop.melSlot*BEAT<ac.currentTime-4.5){ /* タブ復帰時は小節の頭から静かに */
+    bloomLoop.grid0=ac.currentTime+0.15;
+    bloomLoop.melSlot=0;bloomLoop.accMeas=0;
+  }
+  while(bloomLoop.grid0+bloomLoop.melSlot*BEAT<ac.currentTime+0.9){
+    const meas=bloomLoop.melSlot/4;
+    const posInLoop=meas%bloomLoop.loopLen;
+    const t=bloomLoop.grid0+bloomLoop.melSlot*BEAT;
+    if(posInLoop<bloomLoop.seq.length){
+      const s=bloomLoop.seq[posInLoop];
+      const pan=((posInLoop*3%7)-3)*0.08;
+      waterTone(ac,PENTA[s[0]],t,BEAT*4,0.22,pan); /* 旋律は膜の中に沈み、かすかに浮かぶ */
+    }
+    bloomLoop.melSlot+=4;
+  }
+  while(bloomLoop.grid0+bloomLoop.accMeas*BEAT*4<ac.currentTime+0.9){
+    const meas=bloomLoop.accMeas,t=bloomLoop.grid0+meas*BEAT*4;
+    const ch=DEB_CHORDS[meas%DEB_CHORDS.length];
+    const W=BEAT*4;
+    bassTone(ac,ch[0],t,W+0.8,0.44,0);
+    waterTone(ac,ch[1],t,W,0.15,-0.14);
+    waterTone(ac,ch[2],t,W,0.14,0.14);
+    waterTone(ac,ch[3],t,W,0.11,0.05);
+    bloomLoop.accMeas=meas+1;
+  }
+  bloomLoop.timer=setTimeout(bloomLoopPump,240);
+}
+function bloomMelodyStop(hard){
+  if(!bloomLoop.on)return;
+  bloomLoop.on=false;clearTimeout(bloomLoop.timer);
+  try{
+    if(AC&&melodyBusN){ /* 岸辺ごと、水に溶けるように */
+      const t=AC.currentTime;
+      melodyBusN.out.gain.cancelScheduledValues(t);
+      melodyBusN.out.gain.setValueAtTime(Math.max(melodyBusN.out.gain.value,0.0001),t);
+      melodyBusN.out.gain.exponentialRampToValueAtTime(0.0001,t+(hard?0.2:2.4));
+    }
+  }catch(e){}
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)bloomMelodyStop(true)});
+
+/* ═══════════════════════════════════════════════
+   仏壇のレンダリング
+   ═══════════════════════════════════════════════ */
+function vstack(s){return String(s||'').split('').map(c=>`<span>${esc(c)}</span>`).join('')}
+document.getElementById('hTitle').textContent=HOUSE.title;
+document.getElementById('ihaiTxt').innerHTML=vstack(HOUSE.ihai);
+(function meinichi(){
+  /* 命日の前後1週間、そっと一言。年またぎ（12月末・1月初）にも耐える */
+  const now=new Date();
+  const [mm,dd]=HOUSE.meinichi.split('-').map(Number);
+  let best=Infinity;
+  for(const y of [now.getFullYear()-1,now.getFullYear(),now.getFullYear()+1]){
+    const diff=Math.round((new Date(y,mm-1,dd)-new Date(now.getFullYear(),now.getMonth(),now.getDate()))/86400000);
+    if(Math.abs(diff)<Math.abs(best))best=diff;
+  }
+  const el=document.getElementById('hDay');
+  if(Math.abs(best)<=7){
+    el.textContent=best===0
+      ?`今日 ${mm}/${dd}は、${HOUSE.honoree}の命日ですね`
+      :`${mm}/${dd}は、${HOUSE.honoree}の命日ですね`;
+  }else el.textContent='';
+})();
+const flowerCanvases=new Map(); /* id → {el,drawn} */
+function renderAll(){renderFlowers();renderEnvelopes();renderCho()}
+function renderFlowers(){
+  const L=document.getElementById('vaseL'),R=document.getElementById('vaseR');
+  const fl=state.flowers;
+  /* 取り消された花があれば、生け直す */
+  const ids=new Set(fl.map(f=>f.id));
+  let stale=false;
+  flowerCanvases.forEach((_,id)=>{if(!ids.has(id))stale=true});
+  if(stale){flowerCanvases.forEach(v=>{try{v.el.remove()}catch(e){}});flowerCanvases.clear()}
+  fl.forEach((f,i)=>{
+    if(flowerCanvases.has(f.id))return;
+    const wrap=document.createElement('div');
+    wrap.className='flowerCv '+(i%2?'swayB':'swayA');
+    const cv=document.createElement('canvas');
+    wrap.appendChild(cv);
+    const side=(i%2===0)?L:R;
+    const k=Math.floor(i/2); /* その花瓶の中で何本目か */
+    /* 根元は必ず花瓶の口。横にずらさず、根元を軸にかたむけて扇状に生ける */
+    const fan=k===0?0:(k%2===1?1:-1)*Math.ceil(k/2)*11;
+    wrap.style.transform=`translateX(-50%) rotate(${fan}deg)`;
+    wrap.style.zIndex=String(10-k);
+    side.appendChild(wrap);
+    drawStaticFlower(cv,f);
+    flowerCanvases.set(f.id,{el:wrap});
+  });
+}
+function drawStaticFlower(cv,f){
+  const dpr=Math.min(2,window.devicePixelRatio||1);
+  cv.width=150*dpr;cv.height=196*dpr;
+  const ctx=cv.getContext('2d');ctx.scale(dpr,dpr);
+  const fp=designFlower(f.m,f.s);
+  const sk=buildSketch(fp,f.s);
+  const yaw=(f.s%628)/100; /* 声由来の向き */
+  drawFlowerTo(ctx,sk,fp,f.s,{cx:75,cy:66,S:48,prog:1,view:{yaw,pitch:0.62,spin:0},bottomY:196}); /* 茎は画布の底まで＝花瓶の口の奥へ */
+}
+function renderEnvelopes(){
+  const row=document.getElementById('envRow');
+  const es=state.envelopes;
+  if(!es.length){row.innerHTML='<div class="envEmpty">まだ供えられていません</div>';return}
+  row.innerHTML=es.map(e=>
+    `<div class="fuutou"><span class="fuTxt">${vstack('御佛前')}</span><span class="fuName">${esc(e.n)}</span></div>`
+  ).join('');
+}
+function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function fmtT(t){
+  const d=new Date(t*1000);
+  return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+function renderCho(){
+  const cf=document.getElementById('choFlowers');
+  if(!state.flowers.length)cf.innerHTML='<div class="choEmpty">まだお参りはありません</div>';
+  else cf.innerHTML=state.flowers.slice().reverse().map(f=>{
+    const fp=designFlower(f.m,f.s);
+    return `<div class="choRow"><span class="choName">${esc(f.n)}</span>`+
+      `<span class="choWhat">${fp.name[0]}（${fp.famJp}・${fp.colorName}）${f.w?'── 「ただいま」':''}</span>`+
+      `<span class="choWhen">${fmtT(f.t)}</span>`+
+      `<button class="choDel" data-del="${esc(f.id)}" aria-label="この花を取り消す">×</button></div>`;
+  }).join('');
+  const ce=document.getElementById('choEnv');
+  if(!state.envelopes.length)ce.innerHTML='<div class="choEmpty">まだ御仏前はありません</div>';
+  else ce.innerHTML=state.envelopes.slice().reverse().map(e=>
+    `<div class="choRow"><span class="choName">${esc(e.n)}</span>`+
+    `<span class="choWhat">${e.msg?esc(e.msg):'御仏前を供えました'}</span>`+
+    `<span class="choWhen">${fmtT(e.t)}</span>`+
+    `<button class="choDel" data-del="${esc(e.id)}" aria-label="この封筒を取り消す">×</button></div>`
+  ).join('');
+  const cs=document.getElementById('choSake');
+  const sk=state.sake||[];
+  if(!sk.length)cs.innerHTML='<div class="choEmpty">まだ注がれていません</div>';
+  else cs.innerHTML=sk.slice().reverse().map(s=>
+    `<div class="choRow"><span class="choName">${esc(s.n)}</span>`+
+    `<span class="choWhat">お猪口に一杯、そそがれました</span>`+
+    `<span class="choWhen">${fmtT(s.t)}</span>`+
+    `<button class="choDel" data-del="${esc(s.id)}" aria-label="この一杯を取り消す">×</button></div>`
+  ).join('');
+}
+/* 取り消し：一度目のタップで「取り消す」に変わり、二度目で確定（押し間違いの守り） */
+document.addEventListener('click',e=>{
+  const b=e.target.closest('.choDel');if(!b)return;
+  if(!b.classList.contains('arm')){
+    b.classList.add('arm');b.textContent='取り消す';
+    setTimeout(()=>{if(b.isConnected){b.classList.remove('arm');b.textContent='×'}},2800);
+    return;
+  }
+  removeItem(b.getAttribute('data-del'));
+});
+
+/* 線香の煙（彩度ゼロ・一本の線。粒は描かない） */
+(function smoke(){
+  if(QUIET)return;
+  const cv=document.getElementById('kemuri');
+  const ctx=cv.getContext('2d');
+  let t=0;
+  function frame(){
+    t+=0.016;
+    ctx.clearRect(0,0,80,220);
+    ctx.strokeStyle='rgba(232,228,216,0.16)';
+    ctx.lineWidth=1.1;
+    ctx.beginPath();
+    for(let i=0;i<=60;i++){
+      const p=i/60;
+      const y=214-p*200;
+      const x=40+Math.sin(p*5.2+t*0.7)*(2+p*13)*Math.min(1,p*3);
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+    }
+    ctx.stroke();
+    if(!document.hidden)requestAnimationFrame(frame);
+    else setTimeout(frame,600);
+  }
+  frame();
+})();
+
+/* ═══════════════════════════════════════════════
+   家族への知らせ（LINE）
+   ・手動：LINEの共有画面を文面つきで開く（今日から使える）
+   ・自動：NOTIFY.url（GAS中継）が設定されていれば、供えた瞬間に自動送信
+   ═══════════════════════════════════════════════ */
+let lastOffer={n:'',flower:false,env:false,msg:''};
+function butsudanUrl(){
+  if(!location.protocol.startsWith('http'))return '';
+  return extUrl(location.origin+location.pathname+(syncId?('?s='+syncId):''));
+}
+function noticeText(kind,n,msg){
+  const what=kind==='both'?'声のお花と御仏前':kind==='env'?'御仏前':'声のお花';
+  let t=`ご実家の仏壇に、${n}から${what}が供えられました`;
+  if(msg)t+=`\n「${msg}」`;
+  const u=butsudanUrl();
+  if(u)t+=`\n${u}`;
+  return t;
+}
+function autoNotify(kind,n,msg){ /* 全自動（NOTIFY.url設定時のみ・失敗しても儀式は止めない） */
+  if(!NOTIFY.url)return;
+  try{
+    fetch(NOTIFY.url,{method:'POST',mode:'no-cors',
+      body:JSON.stringify({kind,n,msg:msg||'',url:butsudanUrl(),t:Date.now()})});
+  }catch(e){}
+}
+function openLineShare(){
+  /* お参りの内容＋仏壇の共有リンク入りで、LINEの共有画面をひらく */
+  const kind=lastOffer.env&&lastOffer.flower?'both':lastOffer.env?'env':'flower';
+  const t=noticeText(kind,lastOffer.n,lastOffer.msg);
+  location.href='https://line.me/R/share?text='+encodeURIComponent(t);
+}
+function openSmsShare(){
+  /* 宛先と本文を入れた状態でSMS作成画面をひらく（あとは送信を押すだけ） */
+  const kind=lastOffer.env&&lastOffer.flower?'both':lastOffer.env?'env':'flower';
+  const t=noticeText(kind,lastOffer.n,lastOffer.msg);
+  const nums=(NOTIFY.sms||[]).map(s=>String(s).replace(/[^0-9+]/g,'')).filter(Boolean).join(',');
+  if(!nums)return;
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
+  location.href='sms:'+nums+(isIOS?'&':'?')+'body='+encodeURIComponent(t);
+}
+/* お参りをおわる：
+   ・NOTIFY.url（自動送信の中継）があれば → もう送ってあるので、静かに閉じるだけ
+   ・なければ → 宛先と文面の入ったSMS画面をひらく（送信を押すだけ） */
+function endVisit(){
+  if(NOTIFY.url){
+    setSync('家族へのお知らせは、自動で送られました');
+  }else{
+    openLineShare(); /* LINEの共有画面（内容＋仏壇リンク入り）→ 家族のトークを選んで送るだけ */
+  }
+  closeModal('mEnv');
+}
+document.getElementById('btnEnd0').addEventListener('click',endVisit);
+document.getElementById('btnEnd2').addEventListener('click',endVisit);
+
+/* ═══════════════════════════════════════════════
+   モーダル共通
+   ═══════════════════════════════════════════════ */
+function openModal(id){document.getElementById(id).classList.add('on')}
+function closeModal(id){document.getElementById(id).classList.remove('on')}
+document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>{
+  const id=b.getAttribute('data-close');
+  if(id==='mVisit')stopVisit();
+  closeModal(id);
+}));
+document.getElementById('btnAbout').addEventListener('click',()=>openModal('mAbout'));
+document.getElementById('btnHayashi').addEventListener('click',()=>openModal('mHayashi'));
+document.getElementById('revealCredit').addEventListener('click',()=>openModal('mHayashi'));
+
+/* ═══════════════════════════════════════════════
+   お参りの流れ：カメラ＋合掌の静けさ → 「ただいま」 → 解析 → 誕生
+   ═══════════════════════════════════════════════ */
+const NAME_KEY='oura_butsudan_name';
+let visitStream=null,visitProc=null,visitSrc=null,visitRunning=false,visitRec=null;
+document.getElementById('btnVisit').addEventListener('click',()=>{
+  openDoors();
+  const nm=localStorage.getItem(NAME_KEY)||'';
+  document.getElementById('visitName').value=nm;
+  document.getElementById('btnCamStart').style.display='';
+  document.getElementById('camWrap').style.display='none';
+  openModal('mVisit');
+});
+document.getElementById('btnCamStart').addEventListener('click',prepVisit);
+document.getElementById('btnPerm').addEventListener('click',()=>attemptStart([
+  {video:{facingMode:'user'},audio:true},
+  {video:true,audio:true},
+]));
+document.getElementById('btnVoiceOnly').addEventListener('click',()=>attemptStart([{audio:true}]));
+function camStatus(main,sub){
+  const el=document.getElementById('camStatus');
+  el.childNodes[0].nodeValue=main;
+  el.querySelector('small').textContent=sub||'';
+}
+let _camStepCur='';
+function setCamStep(no,txt,sub){
+  if(_camStepCur===no+txt)return;
+  _camStepCur=no+txt;
+  document.getElementById('camStep').innerHTML=
+    `<span class="cNo">${no}</span>${txt}<small>${sub||''}</small>`;
+}
+let pendingName='';
+function prepVisit(){
+  /* 名前を確かめて、カメラ画面へ。許可はここでは求めない——
+     「カメラとマイクを許可する」ボタンを、お参りのたびに必ず見せる */
+  const name=(document.getElementById('visitName').value||'').trim();
+  if(!name){document.getElementById('visitName').focus();return}
+  localStorage.setItem(NAME_KEY,name);
+  pendingName=name;
+  document.getElementById('btnCamStart').style.display='none';
+  document.getElementById('camWrap').style.display='';
+  document.getElementById('permPane').style.display='flex';
+  document.getElementById('permMsg').innerHTML='押すと、許可の確認が出ます。<br>「許可」を選んでください。';
+  camStatus('','');
+  setCamStep('一','まず、カメラとマイクの許可を','ボタンを押してください');
+}
+async function attemptStart(tries){
+  /* タップの直後に getUserMedia を呼ぶ＝許可の確認がいちばん確実に出る形 */
+  setSession('play-and-record');
+  try{if(silentAudioEl)silentAudioEl.pause()}catch(e){}
+  audio();
+  let stream=null,lastErr=null;
+  for(const c of tries){
+    try{stream=await navigator.mediaDevices.getUserMedia(c);break}
+    catch(e){lastErr=e}
+  }
+  const msg=document.getElementById('permMsg');
+  if(!stream){
+    const nm=(lastErr&&lastErr.name)||'',detail=(lastErr&&lastErr.message)?' ─ '+lastErr.message:'';
+    if(nm==='NotAllowedError'||nm==='SecurityError'){
+      msg.innerHTML='許可されませんでした。<br>Safari：アドレスバー左の「ぁあ」→「Webサイトの設定」→ カメラとマイクを<b>「許可」</b>にして、再読み込み。<br>LINEから開いた方は「ブラウザで開く」を。<br><span style="opacity:.6">('+nm+detail+')</span>';
+    }else if(nm==='NotReadableError'||nm==='AbortError'){
+      msg.innerHTML='カメラが他のアプリに使われています。<br>カメラを使うアプリを閉じて、もう一度押してください。<br><span style="opacity:.6">('+nm+')</span>';
+    }else{
+      msg.innerHTML='起動できませんでした。もう一度押すか、「声だけ」をお試しください。<br><span style="opacity:.6">('+(nm||'unknown')+detail+')</span>';
+    }
+    setSession('playback');
+    return; /* 許可ボタンは出したまま＝何度でも押せる */
+  }
+  if(!stream.getAudioTracks().length){
+    msg.innerHTML='マイクが許可されていません。<br>声がないと花が咲けません。マイクを「許可」にしてください。';
+    stream.getTracks().forEach(t=>t.stop());setSession('playback');return;
+  }
+  document.getElementById('permPane').style.display='none';
+  visitStream=stream;
+  const video=document.getElementById('camVideo');
+  video.style.display='';
+  const hasVideo=stream.getVideoTracks().length>0;
+  if(hasVideo){video.srcObject=stream;video.play().catch(()=>{})}
+  else{
+    video.style.display='none';
+    camStatus('カメラなしでお参りします','声だけで、お参りできます');
+  }
+  runCapture(stream,pendingName,hasVideo);
+}
+function stopVisit(){
+  visitRunning=false;
+  try{if(visitProc)visitProc.disconnect()}catch(e){}
+  try{if(visitSrc)visitSrc.disconnect()}catch(e){}
+  try{if(visitRec)visitRec.stop()}catch(e){}
+  visitRec=null;
+  if(visitStream){visitStream.getTracks().forEach(t=>t.stop());visitStream=null}
+  /* 音の通り道を「音楽」へ戻す（おりん・旋律がマナーモードでも鳴るように）＋無音ループ再開 */
+  setSession('playback');
+  try{if(silentAudioEl)silentAudioEl.play().catch(()=>{})}catch(e){}
+}
+function runCapture(stream,name,hasVideo){
+  const ac=audio();
+  if(ac.state==='suspended')ac.resume();
+  visitSrc=ac.createMediaStreamSource(stream);
+  visitProc=ac.createScriptProcessor(4096,1,1);
+  const sr=ac.sampleRate;
+  const sink=ac.createGain();sink.gain.value=0;
+  visitSrc.connect(visitProc);visitProc.connect(sink);sink.connect(ac.destination);
+  /* 「ただいま」の聞き取り（可能なブラウザのみ。だめでも声のエネルギーで進む） */
+  let heardTadaima=false;
+  try{
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(SR){
+      visitRec=new SR();
+      visitRec.lang='ja-JP';visitRec.continuous=true;visitRec.interimResults=true;
+      visitRec.onresult=ev=>{
+        for(let i=ev.resultIndex;i<ev.results.length;i++){
+          const t=ev.results[i][0].transcript;
+          if(/ただいま|たっだいま|タダイマ/.test(t))heardTadaima=true;
+        }
+      };
+      visitRec.onerror=()=>{};
+      visitRec.start();
+    }
+  }catch(e){}
+  /* 合掌の静けさ（フレーム差分。カメラ拒否時は時間で進む） */
+  let still=false,stillSince=0,motionCv=null,motionCtx=null,prevFrame=null;
+  const video=document.getElementById('camVideo');
+  if(hasVideo){
+    motionCv=document.createElement('canvas');motionCv.width=48;motionCv.height=36;
+    motionCtx=motionCv.getContext('2d',{willReadFrequently:true});
+  }
+  const startT=performance.now();
+  function checkMotion(){
+    if(!visitRunning)return;
+    const now=performance.now();
+    if(hasVideo&&video.videoWidth){
+      try{
+        motionCtx.drawImage(video,0,0,48,36);
+        const d=motionCtx.getImageData(0,0,48,36).data;
+        if(prevFrame){
+          let diff=0;
+          for(let i=0;i<d.length;i+=16)diff+=Math.abs(d[i]-prevFrame[i]);
+          diff/=(d.length/16)*255;
+          if(diff<0.028){if(!stillSince)stillSince=now;if(now-stillSince>900)still=true}
+          else{stillSince=0;still=false}
+        }
+        prevFrame=new Uint8ClampedArray(d);
+      }catch(e){}
+    }
+    if(now-startT>4500)still=true; /* だれも取り残さない */
+    setTimeout(checkMotion,200);
+  }
+  /* 声の採取 */
+  const chunks=[];let nSamples=0;
+  let ambient=0,ambN=0,calibrated=false;
+  let onsetChunk=-1,lastVoiceChunk=-1,recording=false,done=false;
+  const meterBar=document.getElementById('micMeterBar');
+  visitRunning=true;
+  setCamStep('一','手を合わせてください','お顔は映さなくて大丈夫。手元だけで十分です');
+  camStatus('','');
+  checkMotion();
+  visitProc.onaudioprocess=ev=>{
+    if(!visitRunning||done)return;
+    const inb=ev.inputBuffer.getChannelData(0);
+    chunks.push(new Float32Array(inb));nSamples+=inb.length;
+    let e=0;for(let i=0;i<inb.length;i+=4)e+=inb[i]*inb[i];
+    const rms2=Math.sqrt(e/(inb.length/4));
+    meterBar.style.width=Math.min(100,rms2*900)+'%';
+    const t=nSamples/sr;
+    if(!calibrated){
+      ambient+=rms2;ambN++;
+      if(t>0.8){ambient=ambient/Math.max(1,ambN);calibrated=true}
+      return;
+    }
+    const onTh=Math.max(ambient*4,0.015),offTh=Math.max(ambient*2.2,0.008);
+    if(!recording){
+      if(still&&rms2>onTh){
+        recording=true;onsetChunk=Math.max(0,chunks.length-4); /* 少し手前から */
+        lastVoiceChunk=chunks.length-1;
+        setCamStep('二','聞いています…','');
+      }else if(still){
+        setCamStep('二','「ただいま」と、どうぞ','聞いています');
+      }
+      /* 12秒なにもなければ待機のまま */
+      if(t>25){done=true;finish(null)}
+      return;
+    }
+    if(rms2>offTh)lastVoiceChunk=chunks.length-1;
+    const sinceVoice=(chunks.length-1-lastVoiceChunk)*4096/sr;
+    const recLen=(chunks.length-onsetChunk)*4096/sr;
+    if(sinceVoice>1.05||recLen>7){
+      const voicedLen=(lastVoiceChunk-onsetChunk+1)*4096/sr;
+      if(voicedLen<0.30){recording=false;camStatus('もういちど、どうぞ','「ただいま」と');return}
+      done=true;
+      const endChunk=Math.min(chunks.length-1,lastVoiceChunk+3);
+      const parts=chunks.slice(onsetChunk,endChunk+1);
+      const buf=new Float32Array(parts.reduce((s,p)=>s+p.length,0));
+      let off=0;parts.forEach(p=>{buf.set(p,off);off+=p.length});
+      finish({buf,sr,heard:()=>heardTadaima});
+    }
+  };
+  function finish(cap){
+    stopVisit();
+    if(!cap){closeModal('mVisit');return}
+    setCamStep('三','声から、花を咲かせています','');
+    camStatus('','');
+    setTimeout(()=>{
+      const {m,seed,contour}=analyzeVoice(cap.buf,cap.sr);
+      const qm=spread(m);
+      const seq=seqFromContour(contour,qm); /* 声の実際の音の道筋（決定論） */
+      const heard=cap.heard();
+      closeModal('mVisit');
+      startReveal({n:name,t:Math.floor(Date.now()/1000),s:seed,m:qm,w:heard?1:0,q:seq});
+    },60);
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   誕生（星が輪郭を描き、花がほどける）→ 仏壇へ供える
+   ═══════════════════════════════════════════════ */
+let pendingFlower=null,revealRAF=0;
+function startReveal(f){
+  pendingFlower=f;
+  const fp=designFlower(f.m,f.s);
+  const sk=buildSketch(fp,f.s);
+  const cv=document.getElementById('revealCv');
+  const dpr=Math.min(2,window.devicePixelRatio||1);
+  const W=Math.min(Math.floor(window.innerWidth*0.78),320);
+  cv.width=W*dpr;cv.height=Math.round(W*1.28)*dpr;
+  cv.style.width=W+'px';cv.style.height=Math.round(W*1.28)+'px';
+  const ctx=cv.getContext('2d');ctx.scale(dpr,dpr);
+  const cw=W,chh=Math.round(W*1.28);
+  document.getElementById('revealWord').textContent=f.w?'「ただいま」──たしかに、聞こえました':'あなたの声を、たしかに受け取りました';
+  document.getElementById('revealName').textContent=`${f.n} の一輪`;
+  document.getElementById('revealFlower').innerHTML='';
+  document.getElementById('vpRows').innerHTML='';
+  document.getElementById('revealMusic').innerHTML='';
+  document.getElementById('btnOffer').disabled=true;
+  openModal('mReveal');
+  /* おりん、二打。二打めの余韻の中で花がほどけ、声の旋律が流れはじめる */
+  rin(0.16);
+  setTimeout(()=>rin(0.16),1050);
+  setTimeout(()=>{
+    if(document.getElementById('mReveal').classList.contains('on'))
+      bloomMelodyStart(f.q||seqFromContour(null,f.m));
+  },1600);
+  /* 星の集い（温白一色・疎・幅の二乗で遠慮） */
+  let assembly=null;
+  if(!QUIET){
+    const arng=mulberry32(f.s^0x5741);
+    const total=Math.max(22,Math.round(52*Math.pow(Math.min(1,window.innerWidth/720),2)));
+    assembly=[];
+    for(let k=0;k<total;k++){
+      const pi=Math.floor(arng()*sk.petals.length);
+      const p=sk.petals[pi];
+      assembly.push({pi,pti:Math.floor(arng()*p.pts.length),
+        sx:arng()*cw,sy:-16-arng()*chh*0.4,
+        t0:p.stag*2.0+arng()*0.6,d:1.6+arng()*0.9,
+        sway:(arng()-0.5)*36,r:0.6+arng()*0.6});
+    }
+  }
+  const view={yaw:(f.s%628)/100,pitch:0.52,spin:0};
+  const t0=performance.now();
+  let shown=0;
+  const BLOOM_SECONDS=4.6;
+  function loop(){
+    const t=(performance.now()-t0)/1000;
+    const prog=c01((t-1.1)/BLOOM_SECONDS);
+    view.spin+=0.0016*Math.min(1,Math.max(0,t-BLOOM_SECONDS-1));
+    ctx.clearRect(0,0,cw,chh);
+    const S=cw*0.36*(1+0.012*Math.sin(t*0.9));
+    drawFlowerTo(ctx,sk,fp,f.s,{cx:cw/2,cy:chh*0.40,S,prog,view,bottomY:chh-10});
+    if(assembly){
+      const groupA=0.75+0.25*Math.sin(t*0.9);
+      ctx.fillStyle='#e8f2ff';
+      assembly.forEach(s=>{
+        const p=sk.petals[s.pi];if(!p||!p.pts[s.pti])return;
+        const q=flowerScreenPoint(p,p.pts[s.pti],prog,S,view,fp.lean||0);
+        const tx=q?cw/2+q[0]:cw/2,ty=q?chh*0.40+q[1]:chh*0.40;
+        const pr=c01((t-s.t0)/s.d),ease=1-Math.pow(1-pr,3);
+        const px=s.sx+(tx-s.sx)*ease+s.sway*Math.sin(Math.PI*ease);
+        const py=s.sy+(ty-s.sy)*ease;
+        ctx.globalAlpha=(0.30+0.45*pr)*groupA;
+        ctx.beginPath();ctx.arc(px,py,s.r,0,7);ctx.fill();
+      });
+      ctx.globalAlpha=1;
+    }
+    /* 名と数値を、順にあかす */
+    if(t>2.6&&shown<1){shown=1;
+      document.getElementById('revealFlower').innerHTML=
+        `<div class="fn">${fp.name[0]}</div><div class="fr">${fp.name[1]}</div>`+
+        `<div class="fd">${fp.famJp}・${fp.colorName} ── ${fp.vpJp}の際立つ声</div>`;
+    }
+    if(t>3.0&&shown<2){shown=2;
+      document.getElementById('revealMusic').innerHTML=
+        `いま流れているのは、あなたの「ただいま」から生まれた旋律。<br><span style="color:#7a6f5c">供えるまで、めぐります。</span>`;
+      const rows=VIEWPOINTS.map(vp=>{
+        const v=f.m[vp.key];
+        return `<div class="vpRow" data-v="${v}"><span class="vpK">${vp.jp}</span>`+
+          `<span class="vpBarW"><span class="vpBar"></span></span>`+
+          `<span class="vpV">${v.toFixed(2)}</span></div>`;
+      }).join('');
+      document.getElementById('vpRows').innerHTML=rows;
+      requestAnimationFrame(()=>{
+        document.querySelectorAll('.vpRow').forEach((r,i)=>{
+          setTimeout(()=>{r.classList.add('on');
+            r.querySelector('.vpBar').style.width=(parseFloat(r.dataset.v)*100)+'%'},i*160);
+        });
+      });
+    }
+    if(t>4.6)document.getElementById('btnOffer').disabled=false;
+    if(document.getElementById('mReveal').classList.contains('on'))revealRAF=requestAnimationFrame(loop);
+  }
+  revealRAF=requestAnimationFrame(loop);
+}
+document.getElementById('btnOffer').addEventListener('click',async()=>{
+  if(!pendingFlower)return;
+  const f=pendingFlower;pendingFlower=null;
+  f.id=f.s.toString(16)+'-'+f.t;
+  state.flowers.push(f);
+  state.flowers.sort((a,b)=>a.t-b.t);
+  saveLocal();
+  try{localStorage.setItem('oura_visited','1')}catch(e){} /* お参りを果たした印 */
+  lastOffer={n:f.n,flower:true,env:false,msg:''};
+  autoNotify('flower',f.n,'');
+  bloomMelodyStop(); /* 旋律は水に溶けていく */
+  cancelAnimationFrame(revealRAF);
+  closeModal('mReveal');
+  renderAll();
+  uiTone(0.07,392); /* そっと置く音（おりんは おりんだけ） */
+  syncPush();
+  maybeSuggestShare();
+  /* お参りの流れ：お花 → 御仏前（任意） */
+  setTimeout(()=>openEnvModal(true,f.n),900);
+});
+document.getElementById('btnRedo').addEventListener('click',()=>{
+  pendingFlower=null;
+  bloomMelodyStop(true);
+  cancelAnimationFrame(revealRAF);
+  closeModal('mReveal');
+  document.getElementById('btnVisit').click(); /* 名前はそのまま、もう一度 */
+});
+
+/* ═══════════════════════════════════════════════
+   御仏前（封筒 → PayPay）
+   ═══════════════════════════════════════════════ */
+function openEnvModal(afterFlower,name){
+  document.getElementById('envName').value=name||localStorage.getItem(NAME_KEY)||'';
+  document.getElementById('envMsg').value='';
+  /* 祈りのあとは二択だけ：御仏前を供える（＝お金を送ることの確定）か、今日はここまでか */
+  document.getElementById('envStep0').style.display=afterFlower?'':'none';
+  document.getElementById('envStep1').style.display=afterFlower?'none':'';
+  document.getElementById('envStep2').style.display='none';
+  document.getElementById('envBig').classList.remove('fly');
+  document.getElementById('envLead').innerHTML=afterFlower
+    ?'お花が供えられました。'
+    :'封筒に名前をしるし、仏壇に供えます。<br>お金は PayPay で直接届きます。';
+  const destTxt=
+    PAYPAY.link?`${PAYPAY.name}のPayPayに届きます`:
+    PAYPAY.id?`${PAYPAY.name}のPayPay（${PAYPAY.id}）に届きます`:
+    `${PAYPAY.name}のPayPayへ送ります`;
+  document.getElementById('envDest0').textContent=destTxt;
+  document.getElementById('envDest').textContent='送り先：'+destTxt;
+  /* 自動送信モード（NOTIFY.url設定時）は、おわるの説明を差し替える */
+  document.querySelectorAll('.endNote').forEach(el=>{
+    el.textContent=NOTIFY.url
+      ?'家族へのお知らせは、自動で送られます'
+      :'LINEが開きます。家族のトークを選んで送るだけ（お参りの内容と仏壇のリンク入り）';
+  });
+  openModal('mEnv');
+}
+document.getElementById('btnEnvGo').addEventListener('click',()=>{
+  document.getElementById('envStep0').style.display='none';
+  document.getElementById('envStep1').style.display='';
+  document.getElementById('envLead').innerHTML='封筒に名前をしるし、供えます。<br>お金は PayPay で直接届きます。';
+});
+/* 御仏前は、お参りのあとに（大切なのは祈り） */
+const VISITED_KEY='oura_visited';
+document.getElementById('btnEnv').addEventListener('click',()=>{
+  openDoors();
+  if(!localStorage.getItem(VISITED_KEY)){
+    document.getElementById('envGateMsg').textContent='大切なのは、祈り。まずは手を合わせてから──お参りのあとに、御仏前を供えられます。';
+    setTimeout(()=>{document.getElementById('btnVisit').click()},1700);
+    return;
+  }
+  openEnvModal(false);
+});
+document.getElementById('btnEnvOffer').addEventListener('click',()=>{
+  const n=(document.getElementById('envName').value||'').trim();
+  if(!n){document.getElementById('envName').focus();return}
+  localStorage.setItem(NAME_KEY,n);
+  const msg=(document.getElementById('envMsg').value||'').trim();
+  document.getElementById('envStep1').style.display='none';
+  document.getElementById('envStep2').style.display='';
+  document.getElementById('envBigTxt').innerHTML=vstack('御佛前');
+  document.getElementById('envBigName').innerHTML=vstack(n.slice(0,4));
+  const t=Math.floor(Date.now()/1000);
+  const e={id:'e'+t.toString(36)+'-'+hashStr(n+t).toString(36),n,t,msg}; /* 乱数不使用 */
+  setTimeout(()=>{
+    document.getElementById('envBig').classList.add('fly');
+    uiTone(0.07,329.63); /* 封筒がすべり落ちる、やさしい一粒 */
+  },700);
+  setTimeout(()=>{
+    state.envelopes.push(e);
+    state.envelopes.sort((a,b)=>a.t-b.t);
+    saveLocal();renderAll();syncPush();
+    if(lastOffer.n===n&&lastOffer.flower)lastOffer.env=true;
+    else lastOffer={n,flower:false,env:true,msg:''};
+    lastOffer.msg=msg;
+    autoNotify(lastOffer.flower?'both':'env',n,msg);
+    document.getElementById('envDone').style.display='';
+    document.getElementById('btnPaypay').style.display='';
+    document.getElementById('btnEnd2').style.display='';
+    document.getElementById('endNote2').style.display='';
+    const note=document.getElementById('paypayNote');
+    if(PAYPAY.link){
+      note.style.display='';
+      note.textContent=`${PAYPAY.name}のPayPayが開きます。金額はお気持ちで。`;
+    }else if(PAYPAY.id){
+      note.style.display='';
+      note.innerHTML=
+        `PayPayを開いたら「送る」→ 相手検索に、この番号を貼りつけてください（${esc(PAYPAY.name)}に届きます）。`+
+        `<div class="linkBox" style="margin-top:8px"><input readonly value="${esc(PAYPAY.id)}" id="ppIdBox" style="letter-spacing:.12em;font-size:14px">`+
+        `<button id="ppIdCopy">コピー</button></div>`;
+      document.getElementById('ppIdCopy').addEventListener('click',async()=>{
+        try{await navigator.clipboard.writeText(PAYPAY.id.replace(/-/g,''))}catch(e){
+          document.getElementById('ppIdBox').select();document.execCommand('copy')}
+        document.getElementById('ppIdCopy').textContent='✓';
+      });
+    }else{
+      note.style.display='';
+      note.textContent=`PayPayを開いて、いつもの${PAYPAY.name}のアカウントへ送ってください。`;
+    }
+  },1900);
+});
+document.getElementById('btnPaypay').addEventListener('click',()=>{
+  /* この仏壇のタブは動かさない＝PayPayから戻ってきたとき、そのままお参りの続きへ。
+     アプリだけを呼び、開かなかったときだけ小さく案内を足す */
+  if(PAYPAY.link){window.open(PAYPAY.link,'_blank');return}
+  location.href='paypay://';
+  setTimeout(()=>{
+    if(document.hidden)return; /* アプリが開いた＝何もしない */
+    const fb=document.getElementById('ppFallback');
+    if(fb)fb.style.display='';
+  },1600);
+});
+
+/* ═══════════════════════════════════════════════
+   家族を招く（共有スペースの開設・招待リンク・持ち寄りリンク）
+   ═══════════════════════════════════════════════ */
+document.getElementById('btnInvite').addEventListener('click',openInvite);
+let suggested=false;
+function maybeSuggestShare(){
+  if(syncId||suggested)return;
+  suggested=true;
+  setSync('「家族を招く」から、この仏壇を家族LINEで共有できます');
+}
+function inviteHTML(link,label,extra){
+  return `<div class="mSub" style="margin-top:14px">${label}</div>`+
+    `<div class="linkBox"><input readonly value="${esc(link)}" id="invLink">`+
+    `<button id="invCopy">コピー</button></div>`+
+    (navigator.share?`<button class="mBtn" id="invShare">LINEなどで送る</button>`:'')+
+    `<div class="mNote">${extra}</div>`;
+}
+async function openInvite(){
+  openModal('mInvite');
+  const body=document.getElementById('inviteBody');
+  if(!location.protocol.startsWith('http')){
+    body.innerHTML=`<div class="mNote" style="margin-top:20px">このファイルはまだ「住所」を持っていません。GitHub Pages などに置いて公開すると（README参照・無料・3分）、家族に送れるリンクが生まれます。</div>`;
+    return;
+  }
+  if(!syncId){
+    body.innerHTML=`<div class="mSub" style="margin-top:16px">家族みんなで一つの仏壇に<br>花と御仏前を集める共有スペースを開きます。</div><button class="mBtn" id="invCreate">共有スペースをひらく</button><div class="mNote">無料の保管場所（jsonblob.com）を使います。共有されるのは名前・時刻・花の数値だけです。</div>`;
+    document.getElementById('invCreate').addEventListener('click',async()=>{
+      body.innerHTML='<div class="mSub" style="margin-top:30px">ひらいています…</div>';
+      try{
+        const id=await createSpace();
+        syncId=id;
+        const url=location.origin+location.pathname+'?s='+id;
+        history.replaceState(null,'',url);
+        showInviteLink(url);
+        setSync('家族と同期しています');
+      }catch(e){
+        /* 保管場所が使えない → 持ち寄りリンクへ */
+        showMochiyori('共有スペースがひらけませんでした。かわりに「持ち寄りリンク」でどうぞ。');
+      }
+    });
+  }else{
+    showInviteLink(location.origin+location.pathname+'?s='+syncId);
+  }
+}
+function showInviteLink(url){
+  url=extUrl(url); /* LINEで踏むと、自動で外のブラウザが開く */
+  const body=document.getElementById('inviteBody');
+  body.innerHTML=inviteHTML(url,'このリンクを家族LINEに送ってください。<br>開いた人から同じ仏壇に手を合わせられます。',
+    'LINEで踏むと自動でブラウザが開きます（LINEの中ではカメラが使えないため）。同じリンクを開けば、だれの端末でも同じ花・同じ御仏前が見えます（数秒おきに同期）。30日以上だれもお参りしないと共有スペースは消えることがあります。');
+  wireInvite(url);
+}
+function showMochiyori(lead){
+  const body=document.getElementById('inviteBody');
+  const b64=btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+  const url=extUrl(location.origin+location.pathname+(syncId?('?s='+syncId):'')+'#h='+b64);
+  body.innerHTML=inviteHTML(url,(lead||'')+'<br>いまの仏壇（花と御仏前）をまるごと持ち運ぶリンクです。',
+    'LINEで踏むと自動でブラウザが開きます。開いた人の仏壇に、この花々が合流します。お参りのたびに新しいリンクを送り合えば、家族LINEが同期の糸になります。');
+  wireInvite(url);
+}
+function wireInvite(url){
+  document.getElementById('invCopy').addEventListener('click',async()=>{
+    try{await navigator.clipboard.writeText(url);document.getElementById('invCopy').textContent='✓'}catch(e){
+      document.getElementById('invLink').select();document.execCommand('copy');document.getElementById('invCopy').textContent='✓'}
+  });
+  const sh=document.getElementById('invShare');
+  if(sh)sh.addEventListener('click',()=>{
+    navigator.share({title:HOUSE.title,text:'手を合わせて「ただいま」。'+HOUSE.title+'にお参りできます。',url}).catch(()=>{});
+  });
+}
+
+/* ═══════════════════════════════════════════════
+   起動
+   ═══════════════════════════════════════════════ */
+document.getElementById('btnReset').addEventListener('click',function(){
+  if(!this.classList.contains('arm')){
+    this.classList.add('arm');this.textContent='ほんとうに消しますか？（もう一度タップ）';
+    const b=this;setTimeout(()=>{if(b.isConnected&&b.classList.contains('arm')){b.classList.remove('arm');b.textContent='この仏壇の記録をすべて消す'}},3400);
+    return;
+  }
+  resetAll();
+  this.classList.remove('arm');this.textContent='消えました ── まっさらの仏壇です';
+});
+if(/[?&]reset=1/.test(location.search))resetAll(); /* URLからも消せる保険 */
+renderAll();
+if(syncId)syncPull(true);
+
+/* 検証用フック（家族には見えない。?test=1 のときだけ） */
+if(/[?&]test=1/.test(location.search)){
+  window.__addTestFlower=function(name,vals){
+    const m=spread(Object.assign({core:0.6,dens:0.5,flow:0.7,light:0.55,after:0.4,taka:0.5,yawa:0.5,chika:0.5,dur:2.2},vals||{}));
+    const s=hashStr(name+JSON.stringify(vals||{}));
+    const f={id:s.toString(16)+'-'+Date.now(),n:name,t:Math.floor(Date.now()/1000),s,m,w:1};
+    state.flowers.push(f);saveLocal();renderAll();
+    return designFlower(m,s);
+  };
+  window.__addTestEnv=function(name){
+    state.envelopes.push({id:'e'+Date.now(),n:name,t:Math.floor(Date.now()/1000),msg:''});
+    saveLocal();renderAll();
+  };
+  window.__reveal=function(name){
+    const m=spread({core:0.62,dens:0.48,flow:0.72,light:0.58,after:0.44,taka:0.55,yawa:0.5,chika:0.45,dur:1.8});
+    startReveal({n:name||'詩帆',t:Math.floor(Date.now()/1000),s:hashStr(name||'詩帆'),m,w:1});
+  };
+}
+</script>
+</body>
+</html>
